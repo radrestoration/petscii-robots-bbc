@@ -1,0 +1,7 @@
+# third-party sources fetched by tools/fetch_upstream.sh (each has its own terms)
+upstream/
+# generated
+build/
+__pycache__/
+# local tool paths
+tools.cfg

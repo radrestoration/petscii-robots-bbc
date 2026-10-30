@@ -1,0 +1,16 @@
+# Local tool paths for the PETSCII Robots BBC port.  Copy to tools.cfg (not checked in) and set what you need.
+# Without tools.cfg - or for anything left unset - tools are run by their plain name from your PATH.
+# One NAME=value a line, no spaces around '=': the Makefile includes this file and run-bbc.sh sources it.
+# Use absolute paths, or ~/ at the start.
+
+# cc65 (ca65, ld65). CC65_HOME is cc65's own variable; an installed cc65 needs nothing here.
+#CC65_HOME=~/cc65
+#CA65=ca65
+#LD65=ld65
+
+# b-em (BBC emulator) for ./run-bbc.sh. BEM_DIR: run it from this directory (where its roms/ are), with BEM=./b-em
+#BEM=b-em
+#BEM_DIR=
+
+# python3 (needs numpy and Pillow for the asset tools and tests)
+#PYTHON=python3

@@ -1,0 +1,198 @@
+# PETSCII Robots - BBC Master port: technical notes
+
+Target: BBC Master 128 (MOS 3.x), shadow Mode 1 (`MODE 129`), sideways RAM banks 4-7, DFS disc (`.ssd`, boot option 2).
+Original game: *Attack of the PETSCII Robots* by David Murray. Copyright headers in `source/` are kept as in the sources
+they derive from. Distribution terms are those of the upstream sources (`upstream/c64/README.md`); they are not assessed here.
+
+## 1. Where the code comes from
+- `source/robots.s` - `upstream/c64/C64ROBOTS.ASM` (ACME) translated to ca65 by `tools/acme2ca65.py`, then a mechanical pass
+  (`tools/bbc_mechanical.py`) and hand edits marked `BBC`. From then on the source is maintained by hand; `upstream/` is the
+  reference for diffs.
+- `source/background_tasks.s` - the game logic. The C64 repo `!SOURCE`s a `BACKGROUND_TASKS.ASM` it doesn't contain; the copy
+  from the PET repo (`upstream/pet`, zeropolis79/PETSCIIRobots-Pet) matches the C64 file's conventions exactly ($FB-$FE
+  pointers, `LDA #n` sound ids, literal tile ids, the `CACULATE_AND_REDRAW` spelling). The Plus4/C64REU/C128 copies differ for
+  their own platforms. One BBC hook: `HAL_TICK_REFRESH` at its entry.
+- Assets: `tools/make_data.py` converts the C64 `tileset.gfx`, `gfxfont.prg`, `sprites.gfx`, `level-a..n` (formats verified from
+  the C64 source: tileset = 20 pages of 256: destruct, attrib, 9 char pages TL..BR, 9 colour pages; level = $300 unit bytes +
+  8 KB map; map window = 11x7 tiles of 3x3 characters on a 40x25 screen).
+- `tools/fetch_upstream.sh` fetches the three upstream repos the build and tools read (c64, pet, vic20) at pinned commits into
+  `upstream/` (git-ignored). The translated sources in `source/` are committed, so only `make data` needs `upstream/c64`.
+- Other repos looked at (research only, not fetched; zeropolis79/PETSCIIRobots-{C64REU,Plus4,C128}, polluks/-III): polluks/PETSCIIRobots-BBC (Mode 7 reimplementation with procedurally generated levels - not used),
+  polluks/PETSCIIRobots-III (ca65 PET port with a `PLAT_*` layer - read for ideas).
+
+## 2. Architecture
+The C64 game draws by writing screen RAM ($E000), colour RAM ($D800) and the VIC sprite registers. Those are plain RAM here
+(`VSCR`, `VCOL`, `VIC`, `VSPTR` in `defs.s`), so almost all game code is unchanged.
+- **Refresh** (`HAL_REFRESH`, throttled to every 3rd vsync by `HAL_TICK_REFRESH`, which is called from every place the game
+  polls or waits): update sprite records, window-tile fast path, then scan VSCR/VCOL against `SH_CH`/`SH_CO` (what is on screen)
+  and draw the differing 8x8 cells. A cell is 16 bytes in Mode 1 (left 4 pixels x 8 rows, then right 4 x 8).
+- **Cell drawing**: 1-bit C64 font row -> two screen bytes via `LTAB`/`RTAB` (both bit planes set per lit pixel) ANDed with the
+  colour mask ($0F/$F0/$FF = logical colour 1/2/3). The C64's 16 colours map onto 3 BBC colours + black (`CMAP`, first-pass).
+- **Sprites** (cursor, 2+2 weapon/item icon sprites, 3-layer player) are composited in software *inside* the cell draw: a cell with
+  sprites over it is built in `CBUF` (glyph, then sprites highest number first) and copied to the screen in one go, so sprites don't
+  flicker. When a sprite changes, the cells under its old and new footprints are marked not-drawn.
+- **Window tile fast path**: `DRAW_MAP_WINDOW` reports the plain tile id per window position (`TILE_NEW`; $FF for overlays and
+  animated tiles). A changed plain tile is copied from a cached 24x24 image (144 bytes: 3 strips of 3 cells, rendered on first use
+  from the cells the game plotted, kept in banks 6/7/5 indexed by tile id) instead of drawing 9 cells. `TILEKIND` lists the animated
+  tiles (20,21,22,143,148,196,197,200,201,204,221 - keep in step with `ANIMATE_WATER`). `DECOMPRESS_SCREEN` invalidates it.
+  A step draws ~43 tiles + a few cells (was ~350 cells).
+- **Keyboard**: OS buffer (OSBYTE 145) + INKEY(-n) held-key test (OSBYTE &81) reproduce the C64 KERNAL queue and the game's
+  `$C5 = 64` repeat trick. Internal key numbers come from b-em's matrix table. `*FX4,1`, `*FX225,192`, `*FX229,1`, `*FX11,0` at
+  start-up. Letters are case-insensitive (Caps Lock); Shift is read with INKEY(-1).
+- **Timing**: the vsync event (`EVNTV`, event 4) runs `RUNIRQ` (the C64 raster IRQ body) at 50 Hz; the game clock constant is 50.
+
+### Memory map (`platform/bbc/defs.s`, `source/bbc.cfg`)
+The screen is the whole 40 x 32 cell Mode 1 display (20 KB): the game window is **11 x 9 tiles** (the C64 shows 11 x 7), the info
+panel and health sit in rows 27-30, row 31 is blank. The C64's 25-row full screens (intro, end, custom keys) are shown with the
+CRTC start address moved (`HAL_VIEW_CENTRE`) so they sit centred; `HAL_VIEW_FULL` for the game screen.
+| Area | Contents |
+|---|---|
+| &0E00-&11FF LOW (region size checked) | critical-section stubs, shared tables (CMAP/CMASK, ROWTAB/COLTAB, BITS...), ~850 bytes |
+| &1200-&15FF | HAL variables (sprite records, tile tables, `TBUF`...), ~940 bytes; the loader (&1400) runs here before it is used |
+| &1600-&17FF | the C64's $0600-$07FF variable page |
+| &1800-&1CFF / &2000-&24FF | VCOL / VSCR (virtual colour / screen RAM, 1280 bytes each; VCOL = VSCR - &800 as on the C64) |
+| &1D00 | `MAP_PRECALC` (99 bytes, moved out of the variable page) |
+| &2500, &2A00 | `SH_CH`, `SH_CO` (what is on screen) |
+| &2F00 | virtual VIC registers, sprite pointers |
+| &3000-&7E38 MID | game code (~20 KB, limit &8000: ~450 bytes spare) |
+| bank 4 (&8000, always paged in) | tile tables, level units (&9500), map (&9800) - loaded with `*SRLOAD` |
+| bank 5 | renderer, font, sprite images (paged in only inside a cell draw); tile cache for ids 226+ at &A800 |
+| banks 6, 7 | tile image cache |
+| shadow RAM | the 20 KB Mode 1 screen; cell (c,r) at &3000 + (r*40+c)*16 |
+
+Verified from the Dabhand Master OS guide (ch.5): ACCCON bit 2 (X) sends CPU access to &3000-&7FFF to the shadow RAM, bit 0 (D)
+displays it. In a shadow mode main RAM &3000-&7FFF is therefore free for code as long as X = 0. Drawing = one short critical
+section per cell/tile: `SEI`, page bank 5 (or the cache bank) in with `ROMSEL`+`&F4`, set X, draw, restore, `CLI`. Everything that
+runs with X = 1 lives below &3000 or in the paged bank; the vsync handler can never run inside a critical section.
+
+## 3. Build and test
+    make data | all | ssd | test | clean        (make help)
+`make test` (~3 min) runs, in the headless simulator (`tools/sim6502.py` + `tools/sim_bbc.py`: shadow RAM, ROMSEL banks, OS
+traps, 50 Hz vsync - no emulator or display):
+- `render_test.py` - cell renderer and sprite compositing pixel-exact against an independent Python reference;
+- `verify_test.py` - plays level A and checks the whole screen after 11 moves against an independent rendering of VSCR/VCOL +
+  sprites (covers the tile fast path);
+- `loader_test.py` - boot loader.
+Also: `play_test.py` (drive keys, write `build/preview/play.png`), `intro_test.py`, `tiles_preview.py` (Mode 1 palette previews).
+Bugs these caught, worth remembering: 6502 `bpl` loops can't count from above 127; a 16-bit zero-page pair aliased the next
+variable; `LDA zp,Y` doesn't exist.
+
+## 4. Status
+Seen working in b-em (Master 128): boot, intro menu, level start, movement, scrolling, sprites, no flicker. Not tried on real
+hardware, on a Master Compact, or past the first level.
+
+## 5. To-do (roughly by value)
+1. **Overview map (f7)** - `DISPLAY_MAP` returns immediately. The C64 redefines characters as pixels (128x64 map, 1 bit per
+   cell). Draw it directly in Mode 1 (e.g. 2x2 pixels per map cell) with the blinking player dot; then un-stub `MAP_RENDER` etc.
+2. **Sound** - `PLAY_SOUND` and `HAL_NOP` are stubs; the SID effect data is compiled out (`.if 0` in `robots.s`). Needs SN76489
+   effects keyed by the 19 sound ids (table `SOUND_FX_*` shows the ids), volume/noise envelopes approximating the SID ones.
+3. **Music** - `music.c64` is SID (GoatTracker-style). Options: convert the songs to an SN76489 player, or write a new tracker
+   format; hook `START_LEVEL_MUSIC` etc. (all currently `HAL_NOP`).
+4. **Colour** - the palette is a first pass (black/red/blue/white; some tiles come out in odd colours, e.g. green foliage red).
+   Per-level palettes via `VDU 19` at level load are cheap (tools already count colour use); a palette split by cell-row band
+   (window vs side panel/text) would give two different colour sets on screen. Needs a per-level choice in `tools/make_data.py`.
+5. **Border/background flashes and screen shake** - `VIC+$20/$21/$16` are written but inert. Flashes: briefly change logical
+   colour 0 (or the whole palette); shake: move the CRTC start address / horizontal position (R2) for a few frames.
+6. **Joystick** - the C64's SNES-pad code is stubbed (`SNES_CONTROLER_READ` returns). Add the BBC analogue joystick (OSBYTE 128)
+   and fire button, plus the matching "controls" menu entry.
+7. **Speed** - tile copy is ~2.4 K cycles (16 cycles/byte); unroll or self-modify to ~11. The idle scan costs ~13 ms every 3rd
+   vsync; a dirty hint from the game's few screen writers would remove most of it. The C64 runs its clock at 60 Hz, this at
+   50: game timers are 17% slower (as on a PAL C64); tune `KEYTIMER`/clock constants if wanted.
+8. **Text** - intro message says "welcome to bbc-robots!" (credit line unchanged); check the custom-keys screen, end/win/lose
+   screens and every info message after the PETSCII->BBC key changes (`MSG_*` mention C64 keys like "f7").
+9. **Verification** - run all levels A-N, game over and win screens in b-em and on a real Master; Master Compact; other MOS
+   versions (ACCCON read-modify-write, `*SRLOAD` behaviour). Add a CI-style `make test` run to the routine.
+10. **Housekeeping** - `make ssd` is single-sided (155 KB of 200 KB).
+
+## 6. Other graphics modes (Mode 1 stays; ideas for it are in 6a)
+The structure (virtual 40x25 character screen -> cell diff -> blit, software sprites, tile cache) is mode-independent; what
+changes is the cell-drawing and sprite-expansion code in `hal_gfx.s` and the tile-image size.
+
+| Mode | Resolution / colours / RAM | Fit | Notes |
+|---|---|---|---|
+| **1** (current) | 320x256, 4 colours, 20 KB | exact C64 geometry | colours are the problem: 3 + black for the whole screen (no per-cell colour). |
+| **2** | 160x256, 8 colours, 20 KB | best colour, half horizontal resolution | Each C64 character becomes 4x8 pixels, so the font must be down-sampled (text such as "INFORMATION", digits, key names turns to mush at 4 px; would need a hand-drawn 4x8 font for text cells, and the tile art loses detail). Multicolour sprites (12 px wide) map 1:1 and the C64's 16 colours fold into 8 much better. Cell = 4 px x 8 rows = 16 bytes, so the draw cost and the tile cache (144 bytes per 3x3 tile) are unchanged; screen 20 KB, still wants shadow RAM. This is the mode the Undead BBC port uses. Worth a preview run (`tools/tiles_preview.py`-style) before committing. |
+| **5** | 160x256, 4 colours, 10 KB | half horizontal resolution, small screen | Same down-sampling problem as Mode 2 with only 4 colours; the attraction is memory: a 10 KB screen at &5800 leaves &1900-&57FF for code. Not enough without sideways RAM (code is 19.7 KB, data 14 KB). |
+| **4** | 320x256, 2 colours, 10 KB | exact geometry, monochrome | Halves the bytes drawn per cell (8 vs 16) and the screen; no colour at all (fine for a clean "mono" version); same memory problem as Mode 5 on a 32 KB machine. |
+| **0** | 640x256, 2 colours, 20 KB | no gain | |
+| **7** | teletext | cheap, ugly | the existing polluks port; no tile art, 40x25 with attribute bytes, not worth revisiting. |
+| custom CRTC (25 rows of Mode 1) | 320x200, 16 KB | exact | The game only uses 25 character rows; reprogramming the CRTC to 25 rows frees 4.4 KB and removes the black bars, which matters only on machines without shadow RAM. |
+
+**Mode 2 preview (2026-10-24, `tools/mode2_preview.py`, images in `docs/previews/`)** - level A start, C64 art folded onto the
+8 BBC colours (nearest RGB), also the VIC-20 version's own tileset/font (`upstream/vic20`: hi-res 8x8 characters, 25x25
+screen, 7x7-tile window, only VIC colours 0-7, which are exactly the BBC's 8 colours).
+- 40x25 of 4-pixel cells (same cell shape on screen as Mode 1; each glyph row folded 8->4 pixels, lit if either source pixel
+  is lit): the **map art survives well** and the colours are far better (green grass, cyan/white lander). The **text does not**:
+  "WEAPON", "INFORMATION", the messages and digits are close to illegible at 4x8. Needs a purpose-drawn 4x8 text font (still
+  cramped) or keeping text out of the 4-pixel layout.
+- VIC-20 style, 20x25 of 8-pixel cells (wide pixels, full glyph detail, readable text): crisp and colourful, but only 20 columns,
+  so a 6x7-tile window (the C64 shows 11x7, the VIC-20 itself 7x7).
+- `ideal_8colour_320px.png` = what the current Mode 1 build would look like with 8 colours at full resolution (not available on a
+  BBC): the colour target.
+- The VIC-20 art needs no colour mapping (its colours are already 0-7) and sits slightly better in 8 colours, but it is a different
+  tileset, so level tile ids would have to match (the maps are the same format; chars differ in ~20 of 256 tiles per page).
+Verdict: Mode 2 wins on colour, loses on text and (in the VIC-20 layout) on view size. A mixed design is the interesting one:
+window in Mode 2 colour, text/panel in a legible form (e.g. text drawn into the window's 8-pixel-wide cells only in a 20-column
+variant, or a custom 4x8 font). Cost of the port: new cell/sprite expansion code (Mode 2 pixel interleave, 16-entry tables),
+tile cache 144 bytes per tile unchanged, same memory.
+
+**Follow-up (user: down-sampling unacceptable; current Mode 1 "still pretty good"; try the VIC-20 way with more tiles)** -
+`tools/mode2_vic_layouts.py`, `docs/previews/vic_layouts.png`: VIC-20 tileset/font, 8x8-pixel cells (32 bytes each in Mode 2), no
+down-sampling, 8 colours, readable text. Memory limit: cols x rows x 32 <= 20480.
+| Layout | Screen | Window | Notes |
+|---|---|---|---|
+| L1 | 20 x 32 cells (standard Mode 2) | 6 x 9 tiles (54) + 5 text rows + 2-column strip | no CRTC changes |
+| L2 | 22 x 29 (CRTC R1=88) | 7 x 8 tiles (56) | needs a widened display; not tried on hardware |
+| L3 | 25 x 25 (CRTC R1=100, overscan; the VIC-20 version's own 25x25) | 8 x 7 tiles (56) | overscan may clip on real monitors; not tried |
+For comparison: Mode 1 now 11 x 7 = 77 tiles, VIC-20 original 7 x 7 = 49, C64 11 x 7. Mode 2 cells are 2.1:1 (wide) on a 4:3
+monitor, against about 1.1:1 for Mode 1 and ~1.3:1 on the VIC-20, so the art looks stretched wider than on any other version. Cell
+cost doubles (32 bytes), tile cache images are 288 bytes (3 banks hold ~170 of them), but fewer cells are drawn per step.
+CRTC widening/overscan claims are from general BBC knowledge, not checked against a source or hardware.
+
+Other thoughts:
+- **Per-region palettes** are the cheapest big win for Mode 1: re-programme the video ULA palette at a raster split (system
+  VIA timer synchronised to vsync) so the window and the panel/text bands use different colour sets.
+- **Mode 2 hybrid**: use Mode 1 for text and the panel and Mode 2 for the window needs a mid-frame mode switch; not practical with
+  the OS, possible in principle by writing the ULA control register and CRTC at a raster split. Risky; probably not worth it.
+- **Other machines**: a **BBC B+128** has shadow RAM and sideways RAM, so the same architecture should port with different
+  `ACCCON` (bit 7 only, write-only), `ROMSEL` private-RAM bit and bank numbers (11,12,0,1). A plain **BBC B** or **Electron**
+  with sideways RAM but no shadow screen cannot hold a 20 KB screen and the game together in main RAM; it would need all game
+  code in sideways RAM (two banks plus trampolines) - a large restructuring - or Mode 4/5 plus that. A **Master Compact** shares the Master 128's
+  ACCCON/ROMSEL scheme (per the Dabhand guide) but is untested here, and whether it has the sideways RAM banks 4 and 5 was not checked.
+
+## 6a. Tricks for Mode 1 (discussion 2026-10-24)
+Decision: Mode 1 remains the build. Ideas, roughly by value / certainty:
+1. **Per-level palettes** (certain, cheap): choose the 3 colours per level in `tools/make_data.py`, `VDU 19` at level load.
+2. **Palette split for the bottom rows**: the side panel shares scanlines with the window, so a raster-timed palette change only
+   helps the bottom 4 cell rows (info text, health). A one-shot timer started from the vsync event (user VIA) is the usual way;
+   not tried here, the timing/jitter details are unverified. Whole-window needs (white + blue for the panel) still constrain the
+   window palette, so gain is modest.
+3. **Taller window** (DONE 2026-10-24: 11 x 9 tiles; description kept here for the record): only 25 of the 32 cell rows are used. A 11 x 9 tile window (27 rows) + 5
+   text rows fills the 20 KB screen exactly: 99 tiles instead of 77. Needs the window height constants (7 -> 9), centre row,
+   `MAP_PRECALC` (77 bytes -> 99, relocate), cursor Y range and scroll limits changed in the game code, and slightly changes
+   difficulty (you see further) - make it optional. PAL overscan may clip the extreme top/bottom rows.
+4. **Dithering to synthesise colours** (tried, `tools/dither_preview.py`, `docs/previews/dither_comparison.png`): lit pixels of a
+   cell alternate between two palette colours (white+black = grey, red+white = pink, red+green = yellow/brown...). With the C64's
+   sparse single-pixel tile art it mostly produces speckle; only the filled shapes (grey shading on the lander) gain visibly. The
+   renderer change is small (two masks per cell, alternate by row/column) but the benefit is marginal - maybe greys only.
+5. **Flash colours** (physical 8-15 alternate two colours): possible for the cursor or a health warning; minor.
+6. Not worth it: hardware (CRTC) scrolling - it moves the whole screen including the side panel; mid-line palette changes
+   (cycle-exact, fragile); alternating palettes per frame (flicker).
+7. Timing: starting each refresh just after vsync would line the redraw "wipe" up with the beam; small gain.
+
+## 6b. Taller window and vsync-aligned refresh (done 2026-10-24)
+- Window 11 x 9 tiles (`WIN_W`/`WIN_H` in `defs.s`). Game-code edits (all marked `BBC`): window centre row (`CACULATE_AND_REDRAW`, elevator
+  placement, `USER_SELECT_OBJECT` cursor start), `MAP_PRE_CALCULATE` (99 entries, `PRECALC_ROWS`), `MAP_CHART_L/H` and the
+  `DRAW_MAP_WINDOW` row count, the three "is this unit in the window" tests (now wrap-safe, since the window can start above the
+  map: it starts at player Y-4 and walkable rows begin at row 3), player sprite Y (146), cursor sprite row table, info rows moved
+  down by 6 cell rows (`VSCR+$4B0` etc.), game screen data regenerated at 40x32 by `tools/make_data.py` (6 rows inserted below row 20).
+  `DRAW_MAP_WINDOW` repeats the map's edge rows when the window runs off the map.
+- It changes the game slightly: you see 4 tiles up and down instead of 3 (more warning of robots). Not switchable at run time;
+  reverting needs the edits above undone (`WIN_H` alone is not enough).
+- Possible issues to check on a real machine: the top and bottom cell rows may be cut by PAL overscan on some monitors; the
+  CRTC start-address trick for the 25-row screens relies on the video hardware wrapping the address (b-em does; the Dabhand
+  guide was not checked for it).
+- Refresh start: `HAL_TICK_REFRESH` now starts a refresh only on the first poll after a vsync (`VSYNCFLAG`, set by the vsync
+  event) and at most every 3rd vsync. Because the game polls far more often than 50 Hz this aligns the start of the redraw with the
+  top of the frame; it does not make the redraw itself faster.
+- Colour dithering was tried (`tools/dither_preview.py`) and rejected: the art is unsuited to it.
