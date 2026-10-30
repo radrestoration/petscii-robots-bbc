@@ -1,11 +1,11 @@
 # Attack of the PETSCII Robots - BBC Master
 
 A port of David Murray's *Attack of the PETSCII Robots* to the BBC Master 128, in shadow Mode 1 (320x256, 4 colours).
-It is built from his C64 source and game-logic files (see `upstream/` and the copyright headers in `source/`, which stay
+Licensed under the GNU GPL v3 (see `LICENSE`), like the original game. It is built from his C64 source and game-logic files (see `upstream/` and the copyright headers in `source/`, which stay
 as they are). Technical notes: `PORTING.md`.
 
 **Status: playable proof of concept.** All 14 levels are on the disc and the game plays from the intro menu to level play
-(seen in b-em as a Master 128; not yet on real hardware). No sound or music, no overview map yet - see the to-do list in
+(seen in b-em as a Master 128; not yet on real hardware). Sound effects and the f7 overview map work; no music yet - see the to-do list in
 `PORTING.md`.
 
 Email contact@radrestoration.com for bug reports.  This port was made with the help of Claude Code. 
@@ -33,17 +33,18 @@ RAM on a stock Master 128).
 |---|---|
 | I / K / J / L, or cursor keys | move up / down / left / right |
 | W / S / A / D | fire up / down / left / right |
-| f1 / f3 | cycle weapons / items |
+| f1 or f2 / f3 or f4 | cycle weapons / items |
 | Space | use item |
 | Z | search object |
 | M | move object |
 | Escape | pause (then Y quits the level, N or Escape resumes) |
 | Return, cursor up/down | intro menu |
-| f7 | overview map (not implemented yet) |
-| Shift+M | music (not implemented yet) |
+| f6, f7 or f8 | overview map (the same key again toggles robots / player, any other key returns) |
+| Shift+M | music toggle (no music yet) |
 | Tab | cheat (the C64's C= + *) |
 
-The key table is `KEYSET` in `source/platform/bbc/hal_main.s`.
+The key table is `KEYSET` in `source/platform/bbc/hal_main.s`. b-em numbers the host function keys differently in its physical and
+logical keyboard modes (host F1 is the BBC's f0 in one, f1 in the other), so each function is on two or three neighbouring keys.
 
 ## Layout
     source/            robots.s (the game), background_tasks.s (game logic), bbc.cfg (linker), loader.cfg

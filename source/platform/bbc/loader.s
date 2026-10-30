@@ -62,4 +62,5 @@ cmds:   .byte "*LOAD LOW 0E00",13
         .byte "*LOAD MID 3000",13
         .byte "*SRLOAD GFX 8000 5",13
         .byte "*SRLOAD TILES 8000 4",13
+        .byte "*SRLOAD SCREENS B800 4",13
         .byte 0

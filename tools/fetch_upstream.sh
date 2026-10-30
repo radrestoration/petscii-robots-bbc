@@ -2,6 +2,7 @@
 # Fetch the third-party sources this port reads, at the commits it was built from, into upstream/ (not part of this repo).
 #   c64   - assets (tileset, font, sprites, 14 levels) and the C64 source `make data` takes the game screen layout from
 #   pet   - the game-logic source (BACKGROUND_TASKS.ASM) that source/background_tasks.s was translated from
+#   Plus4 - SOUND.ASM: the sound effect data that tools/make_sound.py converts for the SN76489
 #   vic20 - only for the Mode 2 preview tools (tools/mode2_*.py)
 # Each repo has its own README and terms; see them before redistributing anything derived from them.
 set -e
@@ -15,4 +16,5 @@ fetch() {   # name url commit
 }
 fetch c64   https://github.com/zeropolis79/PETSCIIRobots-C64  63b4d6cb0b5f0b44fb570cf499524a4d5d5e8818
 fetch pet   https://github.com/zeropolis79/PETSCIIRobots-Pet  83058d15d8f004e707c7838eb3e1d8e123ce34dd
+fetch Plus4 https://github.com/zeropolis79/PETSCIIRobots-Plus4 b09470938949d9f5d423b2dbc84a52f417407724
 fetch vic20 https://github.com/zeropolis79/PETSCIIRobots-Vic20 f0b349f622ecde4c1374cd1b10467cc7884090c5

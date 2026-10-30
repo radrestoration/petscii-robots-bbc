@@ -29,10 +29,11 @@ class BBC:
             b = open(os.path.join(B, name), 'rb').read(); m[off:off+len(b)] = b
         self.banks = {n: bytearray(0x4000) for n in range(16)}
         g = open(os.path.join(B, 'robots-gfx.bin'), 'rb').read(); self.banks[5][:len(g)] = g
-        self.crtc = {12: 0x06, 13: 0x00}; self.crtc_sel = 0
+        self.crtc = {12: 0x06, 13: 0x00}; self.crtc_sel = 0; self.sn = []; self.ddra = []; self.frame = 0
         self.rom = 0; self.shadow = bytearray(0x5000); self.x = 0
         self.cpu.write_hooks.append(self._hook)
         self.select_bank(4)
+        scr = open(os.path.join(B, 'robots-scr.bin'), 'rb').read(); m[0xB800:0xB800+len(scr)] = scr     # compressed screens: bank 4 at &B800
         self.log = []
     def select_bank(self, n):
         m = self.cpu.m
@@ -40,6 +41,8 @@ class BBC:
     def _hook(self, a, v):
         if a == 0xFE30: self.select_bank(v & 15)
         elif a == 0xFE00: self.crtc_sel = v
+        elif a == 0xFE40 and v == 0: self.sn.append((self.frame, self.cpu.m[0xFE41]))      # SN76489 /WE strobe: the byte on port A
+        elif a == 0xFE43: self.ddra.append(v)
         elif a == 0xFE01: self.crtc[self.crtc_sel] = v
         elif a == 0xFE34:
             x = (v >> 2) & 1
@@ -81,6 +84,7 @@ class Game(BBC):
         d = os.path.join(B, 'data'); self.osbyte_log = []; self.vdu = []; self.oscli_log = []
         self.keys = []                       # OS keyboard buffer (characters)
         self.held = set()                    # internal key numbers currently down
+        scr = open(os.path.join(B, 'robots-scr.bin'), 'rb').read(); self.cpu.m[0xB800:0xB800+len(scr)] = scr
         tiles = open(os.path.join(d, 'tiles.bin'), 'rb').read()
         self.cpu.m[0x8000:0x8000+len(tiles)] = tiles          # bank 4 is the one paged in
         self.load_level('A')
@@ -118,6 +122,7 @@ class Game(BBC):
                 self.next_irq += 40000
                 if c.m[0x0220] | (c.m[0x0221] << 8) == self.L['EVT']: self.vsync()   # only once the game has hooked it
     def vsync(self):
+        self.frame += 1
         c = self.cpu; sv = (c.a, c.x, c.y, c.pc, c.p(), c.sp)
         self.call(self.L['EVT'], a=4, x=c.x, y=c.y)
         c.a, c.x, c.y, c.pc, c.sp = sv[0], sv[1], sv[2], sv[3], sv[5]; c.setp(sv[4])

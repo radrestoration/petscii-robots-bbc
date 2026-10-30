@@ -14,7 +14,7 @@ c.pc = 0x1400; c.sp = 0xFF
 for _ in range(100000):
     if c.pc == 0x3000: break
     c.step()
-want = ['*LOAD LOW 0E00', '*LOAD MID 3000', '*SRLOAD GFX 8000 5', '*SRLOAD TILES 8000 4']
+want = ['*LOAD LOW 0E00', '*LOAD MID 3000', '*SRLOAD GFX 8000 5', '*SRLOAD TILES 8000 4', '*SRLOAD SCREENS B800 4']
 ok = c.pc == 0x3000 and vdu == [22, 135] and log == want
 print('loader:', 'ok' if ok else 'FAILED', log, vdu)
 sys.exit(0 if ok else 1)

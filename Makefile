@@ -17,19 +17,22 @@ help:
 	@echo "make data    convert the C64 assets (build/data)"
 	@echo "make all     assemble + link the BBC images (build/robots-{low,mid,gfx}.bin)"
 	@echo "make ssd     build/robots.ssd (boots on a Master: shift-break)"
-	@echo "make test    renderer, sprite, whole-screen and loader tests in the headless 6502 simulator (~3 min)"
+	@echo "make test    renderer, sprite, whole-screen, loader, overview-map and sound tests in the headless 6502 simulator (~6 min)"
 	@echo "make clean"
 
-upstream/c64/tileset.gfx:
+upstream/c64/tileset.gfx upstream/Plus4/SOUND.ASM:
 	tools/fetch_upstream.sh
 upstream: upstream/c64/tileset.gfx
 
 data: build/data/palette.inc
 build/data/palette.inc build/data/scr_text.inc build/data/scr_color.inc: tools/make_data.py tools/c64data.py upstream/c64/tileset.gfx
 	$(PYTHON) tools/make_data.py
+build/data/sound.inc: tools/make_sound.py upstream/Plus4/SOUND.ASM
+	@mkdir -p build/data
+	$(PYTHON) tools/make_sound.py
 
 all: build/robots-mid.bin
-build/robots-mid.bin: $(SRC) source/bbc.cfg build/data/palette.inc build/data/scr_text.inc build/data/scr_color.inc
+build/robots-mid.bin: $(SRC) source/bbc.cfg build/data/palette.inc build/data/scr_text.inc build/data/scr_color.inc build/data/sound.inc
 	@mkdir -p build
 	$(CA65) -g -t none -I build/data -I source --bin-include-dir build/data -o build/robots.o source/robots.s
 	$(LD65) -C source/bbc.cfg -o build/robots build/robots.o -m build/robots.map --dbgfile build/robots.dbg
@@ -48,6 +51,8 @@ test: all build/loader.bin
 	$(PYTHON) tools/render_test.py
 	$(PYTHON) tools/verify_test.py
 	$(PYTHON) tools/loader_test.py
+	$(PYTHON) tools/map_test.py
+	$(PYTHON) tools/sound_test.py
 
 clean:
 	rm -f build/robots* build/*.o build/loader.*

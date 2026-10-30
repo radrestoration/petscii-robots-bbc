@@ -2,7 +2,7 @@
 
 Target: BBC Master 128 (MOS 3.x), shadow Mode 1 (`MODE 129`), sideways RAM banks 4-7, DFS disc (`.ssd`, boot option 2).
 Original game: *Attack of the PETSCII Robots* by David Murray. Copyright headers in `source/` are kept as in the sources
-they derive from. Distribution terms are those of the upstream sources (`upstream/c64/README.md`); they are not assessed here.
+they derive from. The game is GPLv3 (the upstream repos carry the GPLv3 text; `LICENSE` here is the same file) and this port is released under the same licence, with the author's agreement.
 
 ## 1. Where the code comes from
 - `source/robots.s` - `upstream/c64/C64ROBOTS.ASM` (ACME) translated to ca65 by `tools/acme2ca65.py`, then a mechanical pass
@@ -54,8 +54,9 @@ CRTC start address moved (`HAL_VIEW_CENTRE`) so they sit centred; `HAL_VIEW_FULL
 | &1D00 | `MAP_PRECALC` (99 bytes, moved out of the variable page) |
 | &2500, &2A00 | `SH_CH`, `SH_CO` (what is on screen) |
 | &2F00 | virtual VIC registers, sprite pointers |
-| &3000-&7E38 MID | game code (~20 KB, limit &8000: ~450 bytes spare) |
-| bank 4 (&8000, always paged in) | tile tables, level units (&9500), map (&9800) - loaded with `*SRLOAD` |
+| &1D80 / &1E00 | `SPRTILE` (99 bytes) / `MAPROW` (128 bytes) |
+| &3000-&7B23 MID | game code and sound data (~19 KB, limit &8000: ~1.2 KB spare) |
+| bank 4 (&8000, always paged in) | tile tables, level units (&9500), map (&9800), compressed screens (&B800-&BFDB) - loaded with `*SRLOAD` |
 | bank 5 | renderer, font, sprite images (paged in only inside a cell draw); tile cache for ids 226+ at &A800 |
 | banks 6, 7 | tile image cache |
 | shadow RAM | the 20 KB Mode 1 screen; cell (c,r) at &3000 + (r*40+c)*16 |
@@ -82,22 +83,26 @@ Seen working in b-em (Master 128): boot, intro menu, level start, movement, scro
 hardware, on a Master Compact, or past the first level.
 
 ## 5. To-do (roughly by value)
-1. **Overview map (f7)** - `DISPLAY_MAP` returns immediately. The C64 redefines characters as pixels (128x64 map, 1 bit per
-   cell). Draw it directly in Mode 1 (e.g. 2x2 pixels per map cell) with the blinking player dot; then un-stub `MAP_RENDER` etc.
-2. **Sound** - `PLAY_SOUND` and `HAL_NOP` are stubs; the SID effect data is compiled out (`.if 0` in `robots.s`). Needs SN76489
-   effects keyed by the 19 sound ids (table `SOUND_FX_*` shows the ids), volume/noise envelopes approximating the SID ones.
+1. ~~Overview map (f7)~~ DONE - see 6c. (Possible polish: draw it at 2x2 pixels per tile; it is 128x64 pixels, as on the C64.)
+2. ~~Sound effects~~ DONE (first version) - see 6c. Needs tuning by ear on real hardware: the effects are the Plus4 version's,
+   converted; the C64's own SID effect data is a format of its SID driver and was not decoded.
 3. **Music** - `music.c64` is SID (GoatTracker-style). Options: convert the songs to an SN76489 player, or write a new tracker
-   format; hook `START_LEVEL_MUSIC` etc. (all currently `HAL_NOP`).
+   format; hook `START_LEVEL_MUSIC` etc. (all currently `HAL_NOP`). Left for later by decision.
 4. **Colour** - the palette is a first pass (black/red/blue/white; some tiles come out in odd colours, e.g. green foliage red).
    Per-level palettes via `VDU 19` at level load are cheap (tools already count colour use); a palette split by cell-row band
    (window vs side panel/text) would give two different colour sets on screen. Needs a per-level choice in `tools/make_data.py`.
-5. **Border/background flashes and screen shake** - `VIC+$20/$21/$16` are written but inert. Flashes: briefly change logical
+5. **Border/background flashes and screen shake** (left for later by decision) - `VIC+$20/$21/$16` are written but inert. Flashes: briefly change logical
    colour 0 (or the whole palette); shake: move the CRTC start address / horizontal position (R2) for a few frames.
-6. **Joystick** - the C64's SNES-pad code is stubbed (`SNES_CONTROLER_READ` returns). Add the BBC analogue joystick (OSBYTE 128)
-   and fire button, plus the matching "controls" menu entry.
-7. **Speed** - tile copy is ~2.4 K cycles (16 cycles/byte); unroll or self-modify to ~11. The idle scan costs ~13 ms every 3rd
-   vsync; a dirty hint from the game's few screen writers would remove most of it. The C64 runs its clock at 60 Hz, this at
-   50: game timers are 17% slower (as on a PAL C64); tune `KEYTIMER`/clock constants if wanted.
+6. **Joystick** - dropped by decision (the C64's SNES-pad code is stubbed; `SNES_CONTROLER_READ` returns).
+7. **Speed** - three rounds done (6c): a movement step is ~225K cycles of work in the simulator (about 110 ms, was ~210 ms
+   at the start). Where it goes now: tile copy (~55 tiles) ~92 K (41%), sprite cells ~32 K, the game's window plot ~25 K,
+   `CELLS_SYNC` 9 K, tile addressing 2.6 K, the rest ~65 K. Measured and rejected: shifting VSCR/VCOL when the window moves
+   (the shift costs >= 16 K cycles, about what the skipped plotting saves). What is left is the copy itself (9 cycles a
+   byte is the 6502's floor); only a hardware scroll (CRTC start address + redrawing just the new edge row/column) would
+   change the picture much. It needs a split screen or a panel redraw for the info area. The C64 runs its clock at 60 Hz,
+   this at 50: game timers are 17% slower (as on a PAL C64); tune `KEYTIMER`/clock constants if wanted.
+7a. **Seen in b-em, not yet fixed/checked**: "scroll when leaving the title for the game" - changed (the display start address
+   now changes only after the new screen is drawn, display blanked meanwhile); needs checking in b-em.
 8. **Text** - intro message says "welcome to bbc-robots!" (credit line unchanged); check the custom-keys screen, end/win/lose
    screens and every info message after the PETSCII->BBC key changes (`MSG_*` mention C64 keys like "f7").
 9. **Verification** - run all levels A-N, game over and win screens in b-em and on a real Master; Master Compact; other MOS
@@ -196,3 +201,33 @@ Decision: Mode 1 remains the build. Ideas, roughly by value / certainty:
   event) and at most every 3rd vsync. Because the game polls far more often than 50 Hz this aligns the start of the redraw with the
   top of the frame; it does not make the redraw itself faster.
 - Colour dithering was tried (`tools/dither_preview.py`) and rejected: the art is unsuited to it.
+
+## 6c. Overview map, sound, speed-ups (2026-10-29/30)
+- **Licence**: GPLv3 (`LICENSE`), as the original game; confirmed with its author.
+- **Display start change** (`HAL_VIEW_FULL` / `HAL_VIEW_CENTRE`): now queued; the palette is set to black until the next refresh has
+  drawn the new screen, then the CRTC start address is changed and the palette restored (`APPLY_VIEW`). Previously the display
+  jumped three rows when going from a 25-row screen to the game screen before the new screen was drawn.
+- **Overview map (f7)**: the C64 shows the 128x64 map as 128 redefined characters. Here `HAL_MAP_RENDER` builds each of the 8 cell
+  rows of the picture as 8-byte glyphs in `MAPROW` (&1E00) from the tile attributes (one white pixel per tile that can't be walked
+  on) and draws them with the normal cell code straight into the screen memory over cells the scan believes are blank
+  (`HAL_MAP_BLANK`); the blinking 2x2 dots are single-pixel read-modify-writes (`HAL_MAP_PIXEL` -> `HAL_PIXEL_CRIT`). The game's own
+  map code (`DISPLAY_MAP`, `BLINK_PLAYER`, `BLINK_ROBOTS`, `TURN_DOT_*`) is unchanged apart from `MAP_RENDER`/`BIT_PLOT_*`.
+  `tools/map_test.py` checks the picture against the map data (0 wrong pixels of 8188) and the dot blinking.
+- **Memory moved to make room**: the compressed intro/game/map screens (2 KB) now live in bank 4 at &B800 (`SCREENS` segment,
+  file `SCREENS`, `*SRLOAD`ed by the loader); main memory now ends about &7B23 (about 1.2 KB spare).
+- **Sound** (`HAL_PLAY_SOUND`, `SOUND_TICK`, SN76489 routines in `hal_main.s`): the game's 19 sound ids map onto the 15 effects of
+  the Plus4 version (TED: one voice, 10-bit pitch, noise); `tools/make_sound.py` converts them (TED period -> SN76489 period =
+  1.1277 x (1024 - reg), volume 0-8 -> 0-15, noise -> white noise clocked by channel 2) into `build/data/sound.inc`. The engine runs
+  from the vsync event (interrupts off, so the keyboard's use of port A is never interleaved) and keeps the Plus4 engine's
+  semantics: priority (larger = more important), per-note timer, pitch steps, fade-out. Port A direction is restored to &7F after
+  each update. `tools/sound_test.py` plays all 19 ids in the simulator and compares the SN76489 byte stream with an independent
+  Python player (all identical), plus the priority behaviour. Not heard on a real machine: pitch conversion is from the TED
+  documentation as remembered, and the SN76489 write timing (6 NOPs of /WE low) is the usual value, unverified here.
+- **Speed**: (1) `DRAW_MAP_WINDOW` calls `HAL_WANT_REFRESH`, so a window change is drawn at the next vsync instead of waiting for
+  the 3-tick throttle; (2) `DRAW_MAP_WINDOW` skips `PLOT_TILE` when the same plain tile is already there (`TILE_NEW`); (3) the
+  tile pass tests a per-tile "sprite over it" table built once per refresh (`SPRTILE`, &1D80) and syncs `SH_*` with unrolled
+  copies; (4) the 48-byte strip copy is unrolled x4. `tools/step_timing.py` measures key-to-last-draw latency in the simulator:
+  209 ms -> 163 ms average. (5) `SPR_IN_CELL` rewritten: row/byte ranges worked out once per sprite and cell, transparent source
+  bytes skipped, multicolour lookups by table (`MQL1`..`MQR2`, `SP_MC*` indexed q*8+sprite): 178 -> 144 ms. (6) `HAL_BLIT_CRIT` copies the three strips in one loop with its six operands patched per tile (9 cycles a
+  byte, was 13); `TILE_ADDR` reads `J144LO/HI` tables; `CELLS_SYNC` is one unrolled copy per cell-index page (abs,X). Together
+  ~71 K cycles less per step (296 K -> 225 K).

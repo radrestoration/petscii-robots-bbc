@@ -11,7 +11,7 @@ SP_SRCL:        .res 8          ; image address in the GFX bank
 SP_SRCH:        .res 8
 SP_MODE:        .res 8          ; 1 = multicolour
 SP_CM:          .res 8          ; hi-res colour mask
-SP_MCV1:        .res 32         ; multicolour lookups, index sprite*4 + q (q = 0 stays 0 = transparent)
+SP_MCV1:        .res 32         ; multicolour lookups, index q*8 + sprite (q = 0 stays 0 = transparent)
 SP_MCV2:        .res 32
 SP_MCM1:        .res 32
 SP_MCM2:        .res 32
@@ -35,8 +35,23 @@ KEYQ:           .res 1          ; queued key (one slot)
 KREPEAT:        .res 1          ; $028C
 SIDVOL:         .res 1          ; $D418 stand-in
 TICKS:          .res 1
+SND_ID:         .res 1          ; effect playing ($FF none)
+SND_PRIO_CUR:   .res 1
+SND_TIMER:      .res 1          ; frames until the next note / step
+SND_TIMER_R:    .res 1
+SND_STEP_L:     .res 1          ; signed 16-bit period change per step
+SND_STEP_H:     .res 1
+SND_NSTEP:      .res 1
+SND_N_L:        .res 1          ; current period
+SND_N_H:        .res 1
+SND_VOL:        .res 1          ; current loudness 0-15
+SND_NOISE:      .res 1          ; 0 tone, $40 noise
+SND_FADE:       .res 1          ; non-zero: fading out, value = loudness
+VIEW_PENDING:   .res 1          ; display start change waiting for the next completed refresh: 0 none, 1 full, 2 centred
+WANTREF:        .res 1          ; the game says the screen has changed: refresh at the next vsync, whatever the throttle
 VSYNCFLAG:      .res 1          ; set by every vsync, consumed by HAL_TICK_REFRESH
-LASTREF:        .res 1          ; vsync counter
+LASTREF:        .res 1          ; vsync tick of the last refresh
+LASTARROW:      .res 1          ; vsync tick of the last direct arrow-key scan
 OLDEVNT:        .res 2
 
 .segment "CODE"
@@ -57,20 +72,9 @@ HAL_INIT:
         inx
         cpx #VDU_INIT_LEN
         bne :-
-        ldy #0                  ; palette: logical colour y -> physical PHYS[y]
-:       lda #19
-        jsr OSWRCH
-        tya
-        jsr OSWRCH
-        lda PHYS,y
-        jsr OSWRCH
         lda #0
-        jsr OSWRCH
-        jsr OSWRCH
-        jsr OSWRCH
-        iny
-        cpy #4
-        bne :-
+        sta G_V
+        jsr HAL_SETPAL          ; palette
         ldx #0                  ; buffers: blank screen, black, "drawn" = the same (MODE cleared it)
 :       lda #32
         .repeat 5, p
@@ -107,6 +111,9 @@ HAL_INIT:
         sta SP_MCM2,x
         dex
         bpl :-
+        lda #0
+        sta VIEW_PENDING
+        sta WANTREF
         lda #64
         sta LSTX
         lda #1
@@ -126,6 +133,7 @@ HAL_REFRESH:
         jsr SPR_UPDATE
         jsr TILEPASS
         jsr SCAN
+        jsr APPLY_VIEW
         pla
         tay
         pla
@@ -241,8 +249,79 @@ SPR_UPDATE:
         inc S_N
         lda S_N
         cmp #8
-        bne @spr
-        rts
+        beq :+
+        jmp @spr
+:       ; which window tiles have a sprite over them (so the tile fast path leaves them to the cell scan)
+        ldx #WIN_W*WIN_H-1
+        lda #0
+:       sta SPRTILE,x
+        dex
+        bpl :-
+        lda SPR_EN
+        beq @rts
+        lda #7
+        sta S_N
+@mark:  ldx S_N
+        lda BITS,x
+        and SPR_EN
+        beq @mnext
+        lda SP_C0,x             ; tile columns DIV3[c0] .. DIV3[min(c1,32)], tile rows DIV3[r0] .. DIV3[min(r1,26)]
+        cmp #33
+        bcs @mnext              ; entirely in the side panel
+        tay
+        lda DIV3,y
+        sta S_T1                ; first tile column
+        lda SP_C1,x
+        cmp #33
+        bcc :+
+        lda #32
+:       tay
+        lda DIV3,y
+        sta S_T2                ; last tile column
+        ldy SP_R0,x
+        lda DIV3,y
+        sta G_V                 ; row counter
+        ldy SP_R1,x
+        cpy #27
+        bcc :+
+        ldy #26
+:       lda DIV3,y
+        sta G_M                 ; last tile row
+@mrow:  lda G_V                 ; pos = row*11 + first column
+        asl a
+        asl a
+        asl a
+        clc
+        adc G_V
+        clc
+        adc G_V
+        clc
+        adc G_V
+        clc
+        adc S_T1
+        tay
+        lda S_T1
+        sta G_TMP
+@mcol:  lda #1
+        sta SPRTILE,y
+        iny
+        inc G_TMP
+        lda G_TMP
+        cmp S_T2
+        bcc @mcol
+        beq @mcol
+        inc G_V
+        lda G_V
+        cmp G_M
+        bcc @mrow
+        beq @mrow
+@mnext: dec S_N
+        bpl @mark
+@rts:   rts
+
+DIV3:   .repeat 40, i
+        .byte i / 3
+        .endrepeat
 
 ; record for sprite S_N from SIG (current state)
 SPR_RECORD:
@@ -334,10 +413,6 @@ SPR_RECORD:
         sta SP_CM,x
         lda SIG+6
         beq @rts
-        txa
-        asl a
-        asl a
-        sta S_T1                ; sprite*4
         ldy #1
         lda VIC+$25
         jsr MCSET
@@ -349,7 +424,7 @@ SPR_RECORD:
         jsr MCSET
 @rts:   rts
 
-; A = C64 colour, Y = q (1..3): fill sprite S_N's multicolour lookups at index S_T1+q
+; A = C64 colour, Y = q (1..3): fill sprite S_N's multicolour lookups at index q*8+sprite
 MCSET:  and #$0F
         tax
         lda CMAP,x
@@ -359,8 +434,11 @@ MCSET:  and #$0F
         lda V2TAB,x
         sta G_M
         tya
+        asl a
+        asl a
+        asl a
         clc
-        adc S_T1
+        adc S_N
         tax
         lda G_V
         sta SP_MCV1,x
@@ -603,19 +681,494 @@ SCAN:   SCANPAGE 0
         DRAWPAGE 4
 
 
+
+; ---- sound effects (SN76489) ------------------------------------------------------------------------
+; PLAY_SOUND (A = the C64 version's sound id 0-18) starts an effect unless a more important one is playing; SOUND_TICK, called
+; from the vsync event every frame (interrupts off, so the chip is not shared with the OS's own keyboard scanning of port A),
+; steps it.  The engine is the Plus4 version's, converted by tools/make_sound.py (note format described there).
+.include "sound.inc"
+
+HAL_PLAY_SOUND:
+        tax
+        lda SND_ID
+        cmp #$FF
+        beq @go
+        lda SND_PRIO,x          ; larger = more important
+        cmp SND_PRIO_CUR
+        bcc @no                 ; less important than the one playing
+@go:    php
+        sei
+        lda SND_PRIO,x
+        sta SND_PRIO_CUR
+        stx SND_ID
+        lda SND_FX_L,x
+        sta SND_PTR
+        lda SND_FX_H,x
+        sta SND_PTR+1
+        lda #0
+        sta SND_TIMER
+        sta SND_NSTEP
+        sta SND_FADE
+        plp
+@no:    rts
+
+SOUND_INIT:
+        php
+        sei
+        lda #$FF
+        sta SND_ID
+        jsr SN_BEGIN
+        jsr SN_SILENCE
+        jsr SN_END
+        plp
+        rts
+
+SOUND_TICK:
+        lda SND_ID
+        cmp #$FF
+        bne :+
+        rts
+:       jsr SN_BEGIN
+        jsr SND_STEP
+        jmp SN_END
+
+SND_STEP:
+        lda SND_FADE
+        beq @nofade
+        sec
+        sbc #2
+        bcc @stop
+        beq @stop
+        sta SND_FADE
+        sta SND_VOL
+        jsr SN_VOL
+@nofade:
+        lda SND_TIMER
+        beq @next
+        dec SND_TIMER
+        rts
+@next:  lda SND_NSTEP
+        beq @load
+        dec SND_NSTEP
+        lda SND_TIMER_R
+        sta SND_TIMER
+        clc                     ; period += step, clamped to 8..1023
+        lda SND_N_L
+        adc SND_STEP_L
+        sta SND_N_L
+        lda SND_N_H
+        adc SND_STEP_H
+        bmi @low
+        cmp #4
+        bcc @ok
+        lda #$FF                ; above 1023
+        sta SND_N_L
+        lda #3
+        bne @ok
+@low:   lda #8
+        sta SND_N_L
+        lda #0
+@ok:    sta SND_N_H
+        lda SND_N_H
+        bne @fin
+        lda SND_N_L             ; clamp at 8 (as the reference player and the converter do)
+        cmp #8
+        bcs @fin
+        lda #8
+        sta SND_N_L
+@fin:   jmp SN_PERIOD
+@stop:  lda #$FF
+        sta SND_ID
+        jmp SN_SILENCE
+@load:  ldy #0                  ; next note
+        lda (SND_PTR),y
+        sta SND_N_L
+        iny
+        lda (SND_PTR),y
+        tax
+        and #3
+        sta SND_N_H
+        txa
+        and #$40
+        sta SND_NOISE
+        iny
+        lda (SND_PTR),y
+        bpl @play
+        lda #$FF                ; end of effect
+        sta SND_ID
+        jmp SN_SILENCE
+@play:  sta SND_VOL
+        jsr SN_NOTE
+        ldy #3
+        lda (SND_PTR),y
+        tax
+        and #$7F
+        sta SND_TIMER
+        sta SND_TIMER_R
+        lda #0
+        sta SND_NSTEP
+        sta SND_STEP_L
+        sta SND_STEP_H
+        ldy #4
+        txa
+        bpl @len4
+        lda (SND_PTR),y         ; step lo
+        sta SND_STEP_L
+        iny
+        lda (SND_PTR),y         ; step hi
+        sta SND_STEP_H
+        iny
+        lda (SND_PTR),y         ; step count
+        sta SND_NSTEP
+        cmp #$FF
+        bne :+
+        lda SND_VOL             ; $FF: fade out from here
+        sta SND_FADE
+:       lda #7
+        bne @adv
+@len4:  lda #4
+@adv:   clc                     ; ptr += record length
+        adc SND_PTR
+        sta SND_PTR
+        bcc :+
+        inc SND_PTR+1
+:       rts
+
+; --- SN76489 ------------------------------------------------------------------------------------------
+; Port A (&FE41) carries the byte, bit 0 of the system VIA's addressable latch (&FE40: write $00 / $08) is the chip's /WE.
+; Port A is an input on bit 7 for the keyboard, so DDRA is only made all-output for the duration of an update.
+SN_BEGIN:
+        lda #$FF
+        sta $FE43
+        rts
+SN_END:
+        lda #$7F
+        sta $FE43
+        rts
+SN_OUT:
+        sta $FE41
+        lda #0
+        sta $FE40
+        nop                     ; /WE low for at least 8 us (16 cycles of 2 MHz)
+        nop
+        nop
+        nop
+        nop
+        nop
+        lda #8
+        sta $FE40
+        rts
+SN_SILENCE:
+        lda #$9F
+        jsr SN_OUT
+        lda #$BF
+        jsr SN_OUT
+        lda #$DF
+        jsr SN_OUT
+        lda #$FF
+        jmp SN_OUT
+
+; channel 0 (tone) or channel 2 (drives the noise rate) period from SND_N
+SN_PERIOD:
+        lda SND_NOISE
+        beq @tone
+        lda #$C0                ; channel 2
+        bne @w
+@tone:  lda #$80                ; channel 0
+@w:     sta SND_T
+        lda SND_N_L
+        and #$0F
+        ora SND_T
+        jsr SN_OUT
+        lda SND_N_L
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        sta SND_T
+        lda SND_N_H
+        asl a
+        asl a
+        asl a
+        asl a
+        ora SND_T
+        jmp SN_OUT
+
+; attenuation of the active channel from SND_VOL (loudness 0-15)
+SN_VOL:
+        lda #15
+        sec
+        sbc SND_VOL
+        sta SND_T
+        lda SND_NOISE
+        beq @tone
+        lda #$F0                ; noise channel
+        bne @w
+@tone:  lda #$90                ; channel 0
+@w:     ora SND_T
+        jmp SN_OUT
+
+; start the current note: tone on channel 0, or white noise clocked by channel 2's period (channel 2 itself silent)
+SN_NOTE:
+        lda SND_NOISE
+        beq @tone
+        lda #$9F                ; channel 0 off
+        jsr SN_OUT
+        lda #$DF                ; channel 2 off (its period still sets the noise rate)
+        jsr SN_OUT
+        jsr SN_PERIOD
+        lda #$E7                ; white noise, rate = channel 2
+        jsr SN_OUT
+        jmp SN_VOL
+@tone:  lda #$FF                ; noise off
+        jsr SN_OUT
+        jsr SN_PERIOD
+        jmp SN_VOL
+
+; ---- overview map (f7) ----------------------------------------------------------------------------
+; The picture is the 128x64 map, one pixel per tile (white where the tile can't be walked on), in a block of 16 x 8 cells
+; (MAP_COL0, MAP_ROW0 of the map screen).  It is drawn straight into the screen memory over cells that the cell scan
+; believes are blank, so the scan never touches them.  Each cell row is first built as 8-byte glyphs in MAPROW and drawn
+; with the normal cell code.  The blinking dots are single pixels read-modified-written by HAL_PIXEL_CRIT.
+MAPDEST_L: .repeat 8, r
+        .byte <(SCRTOP + (MAP_ROW0 + r) * 640 + MAP_COL0 * 16)
+        .endrepeat
+MAPDEST_H: .repeat 8, r
+        .byte >(SCRTOP + (MAP_ROW0 + r) * 640 + MAP_COL0 * 16)
+        .endrepeat
+PIXMASK: .byte $88,$44,$22,$11
+
+; blank the block in the virtual screen (the decompressed map screen has the C64's redefined-character codes there)
+HAL_MAP_BLANK:
+        lda #<(VSCR + MAP_ROW0 * 40 + MAP_COL0)
+        sta P_CH
+        lda #>(VSCR + MAP_ROW0 * 40 + MAP_COL0)
+        sta P_CH+1
+        lda #<(VCOL + MAP_ROW0 * 40 + MAP_COL0)
+        sta P_CO
+        lda #>(VCOL + MAP_ROW0 * 40 + MAP_COL0)
+        sta P_CO+1
+        ldx #8
+@r:     ldy #15
+:       lda #32
+        sta (P_CH),y
+        lda #1
+        sta (P_CO),y
+        dey
+        bpl :-
+        lda P_CH
+        clc
+        adc #40
+        sta P_CH
+        bcc :+
+        inc P_CH+1
+:       lda P_CO
+        clc
+        adc #40
+        sta P_CO
+        bcc :+
+        inc P_CO+1
+:       dex
+        bne @r
+        rts
+
+HAL_MAP_RENDER:
+        lda #0
+        sta T_K                 ; block cell row 0-7
+@row:   lda #0
+        sta S_T2                ; line 0-7 within the cell row
+@line:  lda T_K                 ; map row y = 8*cellrow + line; pointer = MAP + y*128
+        asl a
+        asl a
+        asl a
+        clc
+        adc S_T2
+        sta S_T1
+        lsr a
+        clc
+        adc #>MAP
+        sta P_CH+1
+        lda S_T1
+        lsr a
+        lda #0
+        ror a
+        sta P_CH
+        ldy #0
+@grp:   lda #0
+        sta G_V
+@x:     lda (P_CH),y
+        tax
+        lda TILE_ATTRIB,x
+        lsr a                   ; carry = can be walked on
+        rol G_V
+        iny
+        tya
+        and #7
+        bne @x
+        tya                     ; 8 tiles done: glyph byte = 1 where NOT walkable; MAPROW[cell*8 + line]
+        lsr a
+        lsr a
+        lsr a
+        sec
+        sbc #1
+        asl a
+        asl a
+        asl a
+        clc
+        adc S_T2
+        tax
+        lda G_V
+        eor #$FF
+        sta MAPROW,x
+        cpy #128
+        bne @grp
+        inc S_T2
+        lda S_T2
+        cmp #8
+        bne @line
+        ldx T_K                 ; draw the 16 cells of this row
+        lda MAPDEST_L,x
+        sta P_D0
+        lda MAPDEST_H,x
+        sta P_D0+1
+        lda #<MAPROW
+        sta G_GLY
+        lda #>MAPROW
+        sta G_GLY+1
+        lda CMASK+1             ; white
+        sta G_MASK
+        lda #16
+        sta S_T2
+@cell:  lda P_D0
+        clc
+        adc #8
+        sta P_D8
+        lda P_D0+1
+        adc #0
+        sta P_D8+1
+        jsr HAL_CELL_CRIT
+        lda P_D0
+        clc
+        adc #16
+        sta P_D0
+        bcc :+
+        inc P_D0+1
+:       lda G_GLY
+        clc
+        adc #8
+        sta G_GLY
+        dec S_T2
+        bne @cell
+        inc T_K
+        lda T_K
+        cmp #8
+        beq :+
+        jmp @row
+:       rts
+
+; A = 1 set / 0 clear the map-picture pixel at (MAP_X, MAP_Y)
+HAL_MAP_PIXEL:
+        sta G_V
+        lda MAP_Y
+        lsr a
+        lsr a
+        lsr a
+        tax
+        lda MAPDEST_L,x
+        sta P_D0
+        lda MAPDEST_H,x
+        sta P_D0+1
+        lda MAP_X               ; + 16 bytes per cell column
+        lsr a
+        lsr a
+        lsr a
+        asl a
+        asl a
+        asl a
+        asl a
+        clc
+        adc P_D0
+        sta P_D0
+        bcc :+
+        inc P_D0+1
+:       lda MAP_X               ; + 8 for the right-hand byte of the cell, + pixel row
+        and #4
+        asl a
+        sta G_TMP
+        lda MAP_Y
+        and #7
+        ora G_TMP
+        clc
+        adc P_D0
+        sta P_D0
+        bcc :+
+        inc P_D0+1
+:       lda MAP_X
+        and #3
+        tax
+        lda PIXMASK,x
+        sta G_M
+        jmp HAL_PIXEL_CRIT
+
 ; ---- display start (CRTC R12/R13) ----------------------------------------------------------------
 ; The game screen uses all 32 cell rows.  The full screens inherited from the C64 (intro, end, custom keys) are 25 rows;
 ; HAL_VIEW_CENTRE clears the 7 spare rows and starts the display at row 29, so rows 29-31 (blank) show above the 25 rows
 ; of the screen and 4 blank rows below, as the 25-row layout was centred before.  The video hardware wraps the start
 ; address back to the top of the screen memory.
 HAL_VIEW_FULL:
-        ldx #>(SCRTOP / 8)
-        ldy #<(SCRTOP / 8)
-        jmp SETSTART
+        lda #1
+        bne QUEUE_VIEW
 HAL_VIEW_CENTRE:
         jsr HAL_CLEAR_TAIL
+        lda #2
+; The change takes effect when the next refresh has drawn the new screen; until then the display is blanked (all logical
+; colours black), so neither the old picture jumping by 3 rows nor the new one drawing in at the wrong place is seen.
+QUEUE_VIEW:
+        sta VIEW_PENDING
+        lda #1
+        sta G_V
+        jmp HAL_SETPAL
+
+; (end of HAL_REFRESH) apply a queued view change and restore the palette
+APPLY_VIEW:
+        lda VIEW_PENDING
+        beq @done
+        ldx #>(SCRTOP / 8)
+        ldy #<(SCRTOP / 8)
+        cmp #1
+        beq :+
         ldx #>((SCRTOP + 29 * 640) / 8)
         ldy #<((SCRTOP + 29 * 640) / 8)
+:       jsr SETSTART
+        lda #0
+        sta VIEW_PENDING
+        sta G_V
+        jmp HAL_SETPAL
+@done:  rts
+
+; Set the four logical colours (G_V = 0: the game palette PHYS, else black) through the OS: VDU 19.  Writing the video ULA's
+; palette register directly would set only 4 of the 16 entries a 4-colour mode uses (each logical colour occupies four).
+HAL_SETPAL:
+        ldy #0
+@l:     lda #19
+        jsr OSWRCH
+        tya
+        jsr OSWRCH
+        lda G_V
+        bne @black
+        lda PHYS,y
+        jmp @w
+@black: lda #0
+@w:     jsr OSWRCH
+        lda #0
+        jsr OSWRCH
+        jsr OSWRCH
+        jsr OSWRCH
+        iny
+        cpy #4
+        bne @l
+        rts
+
 SETSTART:
         lda #12
         sta $FE00
@@ -710,41 +1263,10 @@ TILEPASS:
 
 ; draw tile T_TILE at window position (T_TX,T_TY) from the cache, unless a sprite is over it
 TILE_BLIT:
-        lda SPR_EN
+        ldx T_POS
+        lda SPRTILE,x
         beq @free
-        lda T_TX                ; tile covers cells c0..c0+2, r0..r0+2
-        asl a
-        clc
-        adc T_TX
-        sta S_T1                ; c0
-        lda T_TY
-        asl a
-        clc
-        adc T_TY
-        sta S_T2                ; r0
-        ldx #7
-@s:     lda BITS,x
-        and SPR_EN
-        beq @ns
-        lda S_T1
-        clc
-        adc #2
-        cmp SP_C0,x
-        bcc @ns
-        lda SP_C1,x
-        cmp S_T1
-        bcc @ns
-        lda S_T2
-        clc
-        adc #2
-        cmp SP_R0,x
-        bcc @ns
-        lda SP_R1,x
-        cmp S_T2
-        bcc @ns
         rts                     ; a sprite is over it: the cell scan draws it with the sprite
-@ns:    dex
-        bpl @s
 @free:  ldx T_TILE
         lda TILE_VALID,x
         bne @have
@@ -774,61 +1296,42 @@ TILE_BLIT:
         jsr CELLS_SYNC
         rts
 
-; SH_* := VSCR/VCOL for the 3x3 cells of the tile at T_IDX
-CELLS_SYNC:
-        clc
-        lda T_IDX
-        adc #<VSCR
-        sta P_CH
-        lda T_IDX+1
-        adc #>VSCR
-        sta P_CH+1
-        lda T_IDX
-        clc
-        adc #<VCOL
-        sta P_CO
-        lda T_IDX+1
-        adc #>VCOL
-        sta P_CO+1
-        lda T_IDX
-        clc
-        adc #<SH_CH
-        sta P_SC
-        lda T_IDX+1
-        adc #>SH_CH
-        sta P_SC+1
-        lda T_IDX
-        clc
-        adc #<SH_CO
-        sta P_SO
-        lda T_IDX+1
-        adc #>SH_CO
-        sta P_SO+1
-        lda #3
-        sta T_K
-@r:     ldy #2
-:       lda (P_CH),y
-        sta (P_SC),y
-        lda (P_CO),y
-        sta (P_SO),y
-        dey
-        bpl :-
-        ldx #0                  ; all four pointers +40
-:       lda P_CH,x
-        clc
-        adc #40
-        sta P_CH,x
-        bcc :+
-        inc P_CH+1,x
-:       inx
-        inx
-        cpx #8
-        bne :--
-        dec T_K
-        bne @r
+; SH_* := VSCR/VCOL for the 3x3 cells of the tile at T_IDX.  VCOL, SH_CH and SH_CO are whole pages away from VSCR, so
+; with X = the low byte of T_IDX one unrolled copy per page of the cell index does it (absolute,X carries into the next
+; page by itself).  A window tile's cell index is at most 990 + 82, so pages 0-3.
+.macro SYNCPAGE p
+.ident(.concat("SYNCP_", .string(p))):
+        .repeat 9, k
+        lda VSCR + p*256 + (k / 3) * 40 + (k .mod 3), x
+        sta SH_CH + p*256 + (k / 3) * 40 + (k .mod 3), x
+        lda VCOL + p*256 + (k / 3) * 40 + (k .mod 3), x
+        sta SH_CO + p*256 + (k / 3) * 40 + (k .mod 3), x
+        .endrepeat
         rts
+.endmacro
+CELLS_SYNC:
+        ldx T_IDX
+        lda T_IDX+1
+        beq @p0
+        cmp #2
+        bcc @p1
+        beq @p2
+        jmp SYNCP_3
+@p0:    jmp SYNCP_0
+@p1:    jmp SYNCP_1
+@p2:    jmp SYNCP_2
+        SYNCPAGE 3
+        SYNCPAGE 2
+        SYNCPAGE 1
+        SYNCPAGE 0
 
 ; X = tile id -> P_S = address of its image, BL_BANK = bank: tiles 0-112 bank 6, 113-225 bank 7, 226+ bank 5 at CACHEB5
+J144LO: .repeat 113, j
+        .byte <(j * TILEBYTES)
+        .endrepeat
+J144HI: .repeat 113, j                  ; with &8000 added
+        .byte >(j * TILEBYTES) + $80
+        .endrepeat
 TILE_ADDR:
         txa
         ldy #6
@@ -841,39 +1344,15 @@ TILE_ADDR:
         ldy #5
         sbc #113
 @j:     sty BL_BANK
-        sta T_J                 ; j*144 = (j*9)<<4
+        tax                     ; X = index within the bank
+        lda J144LO,x
         sta P_S
-        lda #0
-        sta P_S+1
-        asl P_S
-        rol P_S+1
-        asl P_S
-        rol P_S+1
-        asl P_S
-        rol P_S+1
-        lda P_S
-        clc
-        adc T_J
-        sta P_S
-        bcc :+
-        inc P_S+1
-:       asl P_S
-        rol P_S+1
-        asl P_S
-        rol P_S+1
-        asl P_S
-        rol P_S+1
-        asl P_S
-        rol P_S+1
-        lda BL_BANK
-        ldy #>$8000
-        cmp #5
+        lda J144HI,x
+        cpy #5
         bne :+
-        ldy #>CACHEB5
-:       tya
         clc
-        adc P_S+1
-        sta P_S+1
+        adc #>CACHEB5 - $80
+:       sta P_S+1
         rts
 
 ; render tile T_TILE from the cells just plotted at T_IDX into TBUF, then store it in the cache
@@ -960,20 +1439,30 @@ TILE_RENDER:
         sta TILE_VALID,x
         rts
 
-; throttled HAL_REFRESH: at most every 3rd vsync (a full scan costs ~10-20 ms), and only started by the first poll after
-; a vsync, so the redraw begins while the beam is at the top of the frame (the game polls far more often than 50 Hz).
+; throttled HAL_REFRESH: started only by the first poll after a vsync, so the redraw begins while the beam is at the top of the
+; frame (the game polls far more often than 50 Hz), and then either at once if the game flagged a change (HAL_WANT_REFRESH, from
+; DRAW_MAP_WINDOW) or at most every 3rd vsync as a safety net for the places that write the screen without saying so.
 ; Called from every place the game polls or waits: HAL_GETKEY, BACKGROUND_TASKS.
+HAL_WANT_REFRESH:
+        lda #1
+        sta WANTREF
+        rts
+
 HAL_TICK_REFRESH:
         pha
         lda VSYNCFLAG
         beq @no
         lda #0
         sta VSYNCFLAG
+        lda WANTREF
+        bne @go
         lda TICKS
         sec
         sbc LASTREF
         cmp #3
         bcc @no
+@go:    lda #0
+        sta WANTREF
         lda TICKS
         sta LASTREF
         jsr HAL_REFRESH
@@ -996,13 +1485,17 @@ KEYSET:                         ; OS code, internal key number, PETSCII
         .byte 138,$29,$11       ; down
         .byte 136,$19,$9D       ; left
         .byte 137,$79,$1D       ; right
-        .byte 193,$71,133       ; f1  (*FX225,192 moves the function keys to 192+n: no clash with COPY)
-        .byte 195,$73,134       ; f3
+        .byte 193,$71,133       ; f1  weapons  (*FX225,192 moves the function keys to 192+n: no clash with COPY).  b-em's host F-keys are
+        .byte 194,$72,133       ; f2  weapons  ; numbered differently in its physical (host F1 = f0) and logical (host F1 = f1) keyboard
+        .byte 195,$73,134       ; f3  items    ; modes, so each function is on two or three neighbouring keys
+        .byte 196,$14,134       ; f4  items
         .byte 197,$74,135       ; f5
-        .byte 199,$16,136       ; f7  (map)
+        .byte 198,$75,136       ; f6  map
+        .byte 199,$16,136       ; f7  map
+        .byte 200,$76,136       ; f8  map
         .byte 9,$60,223         ; tab = C= + * (cheat)
         .byte 127,$59,20        ; delete
-KEYSET_N = 13
+KEYSET_N = 16
 ; digits '0'..'9'
 KEYNUM_DIGIT: .byte $27,$30,$31,$11,$12,$13,$34,$24,$15,$26
 ; letters 'A'..'Z'
@@ -1058,6 +1551,10 @@ KEYMAP:
         rts
 
 OSCH:   .byte 0
+; keys scanned directly with INKEY when the OS buffer has nothing: cursor keys and function keys (internal key numbers, PETSCII)
+ARROWKEY: .byte $39,$29,$19,$79, $71,$72,$73,$14,$74,$75,$16,$76
+ARROWPET: .byte $91,$11,$9D,$1D, 133,133,134,134,135,136,136,136
+ARROWN = 12
 
 ; returns A = key (0 = none); X and Y preserved
 HAL_GETKEY:
@@ -1093,11 +1590,13 @@ HAL_GETKEY:
         sta KEYQ
         sta LSTX
 @new:   lda KEYQ
-        bne @out
+        beq :+
+        jmp @out
+:
         lda #$91                ; OSBYTE 145: get a byte from the keyboard buffer
         ldx #0
         jsr OSBYTE
-        bcs @out                ; empty
+        bcs @poll               ; empty
         sty OSCH
         tya
         jsr KEYMAP
@@ -1125,6 +1624,36 @@ HAL_GETKEY:
         sta HELDPET
         sta LSTX
         stx HELD
+        jmp @out
+; Nothing in the OS buffer: look at the cursor and function keys directly (INKEY), once per vsync, so they work whatever the OS's
+; cursor-key mode or key buffer is doing.  Only when no key is being tracked already (a press the buffer did deliver sets HELD).
+@poll:  lda HELD
+        bne @out
+        lda TICKS
+        cmp LASTARROW
+        beq @out
+        sta LASTARROW
+        ldx #ARROWN-1
+@a:     stx G_TMP
+        lda ARROWKEY,x
+        eor #$FF
+        tax
+        ldy #$FF
+        lda #$81
+        jsr OSBYTE
+        cpx #$FF
+        beq @af
+        ldx G_TMP
+        dex
+        bpl @a
+        jmp @out
+@af:    ldx G_TMP
+        lda ARROWPET,x
+        sta KEYQ
+        sta HELDPET
+        sta LSTX
+        lda ARROWKEY,x
+        sta HELD
 @out:   lda KEYQ
         sta G_V
         lda #0
@@ -1152,6 +1681,7 @@ OSB_INIT:
 OSB_INIT_N = 5
 
 HAL_OS_SETUP:
+        jsr SOUND_INIT
         lda #0
         sta G_TMP
 :       ldy G_TMP
@@ -1193,6 +1723,7 @@ EVT:    cmp #4
         inc TICKS
         lda #1
         sta VSYNCFLAG
+        jsr SOUND_TICK
         jsr RUNIRQ
         pla
         tay

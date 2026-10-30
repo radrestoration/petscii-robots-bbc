@@ -21,6 +21,22 @@ RTAB:   .repeat 256, i
         .byte ((i & 15) * 17)
         .endrepeat
 
+; multicolour sprite byte b = pixel pairs q3 q2 q1 q0: the left screen byte takes (q3,q2), the right one (q1,q0);
+; each table gives q*8, ORed with the sprite number to index SP_MCV1/2 and SP_MCM1/2
+        .align 256
+MQL1:   .repeat 256, i
+        .byte (i >> 6) * 8
+        .endrepeat
+MQL2:   .repeat 256, i
+        .byte ((i >> 4) & 3) * 8
+        .endrepeat
+MQR1:   .repeat 256, i
+        .byte ((i >> 2) & 3) * 8
+        .endrepeat
+MQR2:   .repeat 256, i
+        .byte (i & 3) * 8
+        .endrepeat
+
         .align 256
 FONT:   .incbin "font.bin"      ; 256 glyphs x 8 bytes
 SPRITES: .incbin "sprites.bin"  ; 43 C64 sprites x 64 bytes
@@ -75,117 +91,114 @@ GFX_CELLSPR:
 
 ; composite sprite S_N into CBUF for cell (G_CX, G_CY).  Sprite bytes: screen byte column k = 2*cx+h-bc0
 ; (0..5) of sprite row ry = 8*cy+y-sy (0..20); each source byte is 8 pixels = screen bytes 2j, 2j+1.
+; The rows and byte columns that overlap the cell are worked out first, and an all-transparent source byte
+; (most of them) costs next to nothing.
 SPR_IN_CELL:
         ldx S_N
-        lda SP_SRCL,x
-        sta S_SRC
-        lda SP_SRCH,x
-        sta S_SRC+1
         lda G_CX
         asl a
         sec
         sbc SP_BC0,x
-        sta S_K0
+        sta S_K0                ; signed: the cell's first byte column relative to the sprite's
+        clc
+        adc #1
+        cmp #7                  ; -1..5 are the only values with a byte of the sprite in this cell
+        bcc :+
+        rts
+:       ldy #0                  ; h range: K0 = -1 leaves out h = 0, K0 = 5 leaves out h = 1
+        lda S_K0
+        bpl :+
+        iny
+:       sty S_H0
+        ldy #1
+        lda S_K0
+        cmp #5
+        bne :+
+        dey
+:       sty S_H1
         lda G_CY
         asl a
         asl a
         asl a
         sec
         sbc SP_SY,x
-        sta S_RY                ; -7..20 whenever the row masks say the sprite is here
+        sta S_RY                ; sprite row of the cell's first pixel row: -7..20 whenever the row masks say the sprite is here
+        lda #20                 ; last pixel row of the cell inside the sprite
+        sec
+        sbc S_RY
+        bpl :+
+        rts
+:       cmp #8
+        bcc :+
+        lda #7
+:       sta S_YE
+        ldy #0                  ; first pixel row inside the sprite
+        lda S_RY
+        bpl :+
         lda #0
-        sta S_Y8
+        sec
+        sbc S_RY
+        tay
+:       sty S_Y8
+        lda SP_SRCL,x
+        sta S_SRC
+        lda SP_SRCH,x
+        sta S_SRC+1
+        lda SP_MODE,x
+        sta S_MODE
+        lda SP_CM,x
+        sta S_CMZ
 @y:     lda S_RY
         clc
         adc S_Y8
-        bmi @nyj
-        cmp #21
-        bcc :+
-@nyj:   jmp @ny
-:
         sta S_T1
         asl a
         clc
         adc S_T1
         sta S_R3                ; ry*3
-        lda #0
+        lda S_H0
         sta S_H
 @h:     lda S_K0
         clc
         adc S_H
-        bmi @nhj
-        cmp #6
-        bcc :+
-@nhj:   jmp @nh
-:
-        sta S_K
+        sta S_K                 ; screen byte column 0..5 of the sprite
         lsr a
         clc
         adc S_R3
         tay
         lda (S_SRC),y
-        sta S_B
-        ldx S_N
-        lda SP_MODE,x
+        beq @nh                 ; transparent
+        tax
+        lda S_MODE
         bne @mc
-        ldx S_B                 ; hi-res: coverage = both planes of the lit pixels, colour from SP_CM
-        lda S_K
+        lda S_K                 ; hi-res: coverage = both planes of the lit pixels, colour from the mask
         and #1
         bne @hr
         lda LTAB,x
         jmp @hv
 @hr:    lda RTAB,x
 @hv:    sta G_M
-        ldx S_N
-        and SP_CM,x
+        and S_CMZ
         jmp @put
-@mc:    lda S_N                 ; multicolour: pixel pairs qa,qb -> value and coverage from the tables
-        asl a
-        asl a
-        sta S_T2
-        lda S_K
+@mc:    lda S_K                 ; multicolour: pixel pairs -> value and coverage from the tables
         and #1
         bne @mcr
-        lda S_B                 ; left screen byte: q3,q2
-        lsr a
-        lsr a
-        lsr a
-        lsr a
-        lsr a
-        lsr a
-        sta S_T1
-        lda S_B
-        lsr a
-        lsr a
-        lsr a
-        lsr a
-        and #3
+        lda MQL1,x
+        ora S_N
+        tay
+        lda MQL2,x
         jmp @mcgo
-@mcr:   lda S_B                 ; right screen byte: q1,q0
-        lsr a
-        lsr a
-        and #3
-        sta S_T1
-        lda S_B
-        and #3
-@mcgo:  sta G_TMP
-        lda S_T2
-        clc
-        adc S_T1
+@mcr:   lda MQR1,x
+        ora S_N
+        tay
+        lda MQR2,x
+@mcgo:  ora S_N
         tax
-        lda SP_MCV1,x
+        lda SP_MCV1,y
+        ora SP_MCV2,x
         sta G_V
-        lda SP_MCM1,x
-        sta G_M
-        lda S_T2
-        clc
-        adc G_TMP
-        tax
-        lda SP_MCV2,x
-        ora G_V
-        sta G_V
-        lda SP_MCM2,x
-        ora G_M
+        lda SP_MCM1,y
+        ora SP_MCM2,x
         sta G_M
         lda G_V
 @put:   sta G_V                 ; A = value, G_M = coverage -> CBUF[h*8+y]
@@ -201,14 +214,14 @@ SPR_IN_CELL:
         and CBUF,y
         ora G_V
         sta CBUF,y
-@nh:    inc S_H
-        lda S_H
-        cmp #2
+@nh:    lda S_H
+        cmp S_H1
         beq @ny
+        inc S_H
         jmp @h
-@ny:    inc S_Y8
-        lda S_Y8
-        cmp #8
+@ny:    lda S_Y8
+        cmp S_YE
         beq @done
+        inc S_Y8
         jmp @y
 @done:  rts

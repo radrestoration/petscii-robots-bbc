@@ -8,7 +8,7 @@ B = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'b
 rd = lambda p: open(os.path.join(B, p), 'rb').read()
 mid = rd('robots-mid.bin'); assert 0x3000 + len(mid) <= 0x8000, 'MID overflows into the sideways window'
 files = [('!BOOT', 0x1400, 0x1400, rd('loader.bin')), ('LOW', 0x0E00, 0x0E00, rd('robots-low.bin')),
-         ('MID', 0x3000, 0x3000, mid), ('GFX', 0, 0, rd('robots-gfx.bin')), ('TILES', 0, 0, rd('data/tiles.bin'))]
+         ('MID', 0x3000, 0x3000, mid), ('GFX', 0, 0, rd('robots-gfx.bin')), ('TILES', 0, 0, rd('data/tiles.bin')), ('SCREENS', 0, 0, rd('robots-scr.bin'))]
 for p in sorted(glob.glob(os.path.join(B, 'data', 'level?.bin'))):
     files.append(('LEVEL-' + p[-5].upper(), 0, 0, open(p, 'rb').read()))
 open(sys.argv[1], 'wb').write(build_ssd(files, title='ROBOTS', boot_option=2))
