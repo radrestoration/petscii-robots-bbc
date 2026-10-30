@@ -12,6 +12,12 @@ Email contact@radrestoration.com for bug reports.  This port was made with the h
 
 David Murray is aware of this port, and has distributed PETSCII Robots under the terms of the GPLv3. 
 
+<p align="center">
+  <img src="screenshots/title.png" alt="The title screen" width="50%">
+  <img src="screenshots/play1.png" alt="Level 1" width="50%">
+</p>
+
+
 ## Building and running
 Needs cc65 (`ca65`, `ld65`), python3 with numpy and Pillow, and git (to fetch the original sources).
     make ssd            # fetches the C64/PET sources it reads into upstream/ (tools/fetch_upstream.sh), converts the
