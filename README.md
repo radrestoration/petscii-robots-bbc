@@ -4,9 +4,11 @@ A port of David Murray's *Attack of the PETSCII Robots* to the BBC Master 128, i
 Licensed under the GNU GPL v3 (see `LICENSE`), like the original game. It is built from his C64 source and game-logic files (see `upstream/` and the copyright headers in `source/`, which stay
 as they are). Technical notes: `PORTING.md`.
 
-**Status: playable proof of concept.** All 14 levels are on the disc and the game plays from the intro menu to level play
-(seen in b-em as a Master 128; not yet on real hardware). Sound effects, music and the f7 overview map work; see the to-do list in
-`PORTING.md`.
+**Status: Beta Test.** All 14 levels are on the disc and the game plays from the intro menu to level play.
+There are no known bugs, but the game has not been thoroughly tested. Due to memory requirements, the game needs
+a BBC Master. 
+
+For more details, see `PORTING.md`.
 
 Email contact@radrestoration.com for bug reports.  This port was made with the help of Claude Code. 
 

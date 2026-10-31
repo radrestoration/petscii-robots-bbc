@@ -60,7 +60,7 @@ CRTC start address moved (`HAL_VIEW_CENTRE`) so they sit centred; `HAL_VIEW_FULL
 | &2500, &2A00 | `SH_CH`, `SH_CO` (what is on screen) |
 | &2F00 | virtual VIC registers, sprite pointers |
 | &1D80 / &1E00 | `SPRTILE` (99 bytes) / `MAPROW` (128 bytes) |
-| &3000-&7F87 MID | game code and sound data (~19.7 KB, limit &8000: ~120 bytes spare) |
+| &3000-&7F87 MID | game code and sound data (~19.1 KB, limit &8000: ~900 bytes spare since the SNES code was removed) |
 | bank 4 (&8000, always paged in) | tile tables, level units (&9500), map (&9800), compressed screens (&B800-&BFDB) - loaded with `*SRLOAD` |
 | bank 5 | renderer, font, sprite images (paged in inside a cell draw); the music player, converter and tables (to &A7E8, paged in by the vsync handler); tile cache for slots 226+ at &A800 (24 slots); the current song's image at &B580-&BFFF |
 | banks 6, 7 | tile image cache (slots 0-225; tiles with identical pictures share a slot: `TSLOT` at &9400 of bank 4) |
@@ -98,7 +98,7 @@ hardware, on a Master Compact, or past the first level.
    (window vs side panel/text) would give two different colour sets on screen. Needs a per-level choice in `tools/make_data.py`.
 5. **Border/background flashes and screen shake** (left for later by decision) - `VIC+$20/$21/$16` are written but inert. Flashes: briefly change logical
    colour 0 (or the whole palette); shake: move the CRTC start address / horizontal position (R2) for a few frames.
-6. **Joystick** - dropped by decision (the C64's SNES-pad code is stubbed; `SNES_CONTROLER_READ` returns).
+6. **Joystick** - dropped by decision (the C64's SNES-pad code and its menu entry are removed, 2026-10-31: the CONTROLS option now cycles keyboard / custom keys).
 7. **Speed** - three rounds done (6c): a movement step is ~225K cycles of work in the simulator (about 110 ms, was ~210 ms
    at the start). Where it goes now: tile copy (~55 tiles) ~92 K (41%), sprite cells ~32 K, the game's window plot ~25 K,
    `CELLS_SYNC` 9 K, tile addressing 2.6 K, the rest ~65 K. Measured and rejected: shifting VSCR/VCOL when the window moves
