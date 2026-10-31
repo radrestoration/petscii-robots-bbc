@@ -111,7 +111,11 @@ class Game(BBC):
     def _oscli(self, c):
         s = bytes(c.m[c.x | (c.y << 8):][:80]).split(b'\r')[0].decode(); self.oscli_log.append(s)
         p = s.split()
-        if p[0].upper() == '*SRLOAD':          # honour level loads
+        if p[0].upper() == '*SRLOAD' and p[1].upper().startswith('MUS'):      # a song image into a sideways bank
+            img = open(os.path.join(B, p[1].upper()), 'rb').read(); addr = int(p[2], 16); bank = int(p[3])
+            if self.rom == bank: self.cpu.m[addr:addr + len(img)] = img
+            else: self.banks[bank][addr - 0x8000:addr - 0x8000 + len(img)] = img
+        elif p[0].upper() == '*SRLOAD':        # honour level loads
             self.load_level(p[1][-1].upper())
     def run(self, cycles):
         """run the main program for `cycles`, taking a vsync event every 20 ms"""

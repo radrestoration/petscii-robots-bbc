@@ -31,11 +31,16 @@ The C64 game draws by writing screen RAM ($E000), colour RAM ($D800) and the VIC
 - **Sprites** (cursor, 2+2 weapon/item icon sprites, 3-layer player) are composited in software *inside* the cell draw: a cell with
   sprites over it is built in `CBUF` (glyph, then sprites highest number first) and copied to the screen in one go, so sprites don't
   flicker. When a sprite changes, the cells under its old and new footprints are marked not-drawn.
-- **Window tile fast path**: `DRAW_MAP_WINDOW` reports the plain tile id per window position (`TILE_NEW`; $FF for overlays and
-  animated tiles). A changed plain tile is copied from a cached 24x24 image (144 bytes: 3 strips of 3 cells, rendered on first use
-  from the cells the game plotted, kept in banks 6/7/5 indexed by tile id) instead of drawing 9 cells. `TILEKIND` lists the animated
-  tiles (20,21,22,143,148,196,197,200,201,204,221 - keep in step with `ANIMATE_WATER`). `DECOMPRESS_SCREEN` invalidates it.
-  A step draws ~43 tiles + a few cells (was ~350 cells).
+- **Window tile fast path**: `DRAW_MAP_WINDOW` reports the cache slot of the tile it plotted per window position (`TILE_NEW`, from
+  `HAL_TILE_KEY`; $FF for overlays and uncached tiles). A changed tile is copied from a cached 24x24 image (144 bytes: 3 strips of
+  3 cells, rendered on first use from the cells the game plotted, kept in banks 6/7/5 indexed by slot) instead of drawing 9 cells.
+  The tiles `ANIMATE_WATER` rewrites cycle through 2 or 3 images (water 204/221 and the trash compactor 148: period 3; fan 196/197/
+  200/201 and server light 143: period 2), so each phase has its own slot: slot = `TSLOT[id]` + the phase of its `TILEKIND`
+  (`HAL_ANIM_STEP` advances the phase counters `KPHASE` with every animation step, and `DRAW_MAP_WINDOW` keys and plots a tile with
+  interrupts off so both see the same phase). Only the cinema screen (20-22, a 197-step ticker) is never cached. `make_data.py` assigns the
+  slots and writes `tile_kind.inc`; `tools/anim_test.py` checks the periods against the game's own routine, that the screen
+  equals the virtual screen over 8 animation steps, and the speed. `DECOMPRESS_SCREEN` invalidates it. A scroll step draws ~43
+  tiles + a few cells (was ~350 cells).
 - **Keyboard**: OS buffer (OSBYTE 145) + INKEY(-n) held-key test (OSBYTE &81) reproduce the C64 KERNAL queue and the game's
   `$C5 = 64` repeat trick. Internal key numbers come from b-em's matrix table. `*FX4,1`, `*FX225,192`, `*FX229,1`, `*FX11,0` at
   start-up. Letters are case-insensitive (Caps Lock); Shift is read with INKEY(-1).
@@ -55,10 +60,10 @@ CRTC start address moved (`HAL_VIEW_CENTRE`) so they sit centred; `HAL_VIEW_FULL
 | &2500, &2A00 | `SH_CH`, `SH_CO` (what is on screen) |
 | &2F00 | virtual VIC registers, sprite pointers |
 | &1D80 / &1E00 | `SPRTILE` (99 bytes) / `MAPROW` (128 bytes) |
-| &3000-&7B23 MID | game code and sound data (~19 KB, limit &8000: ~1.2 KB spare) |
+| &3000-&7EE1 MID | game code and sound data (~19.7 KB, limit &8000: ~285 bytes spare) |
 | bank 4 (&8000, always paged in) | tile tables, level units (&9500), map (&9800), compressed screens (&B800-&BFDB) - loaded with `*SRLOAD` |
-| bank 5 | renderer, font, sprite images (paged in only inside a cell draw); tile cache for ids 226+ at &A800 |
-| banks 6, 7 | tile image cache |
+| bank 5 | renderer, font, sprite images (paged in inside a cell draw); the music player, converter and tables (to &A7E8, paged in by the vsync handler); tile cache for slots 226+ at &A800 (24 slots); the current song's image at &B580-&BFFF |
+| banks 6, 7 | tile image cache (slots 0-225; tiles with identical pictures share a slot: `TSLOT` at &9400 of bank 4) |
 | shadow RAM | the 20 KB Mode 1 screen; cell (c,r) at &3000 + (r*40+c)*16 |
 
 Verified from the Dabhand Master OS guide (ch.5): ACCCON bit 2 (X) sends CPU access to &3000-&7FFF to the shadow RAM, bit 0 (D)
@@ -86,8 +91,8 @@ hardware, on a Master Compact, or past the first level.
 1. ~~Overview map (f7)~~ DONE - see 6c. (Possible polish: draw it at 2x2 pixels per tile; it is 128x64 pixels, as on the C64.)
 2. ~~Sound effects~~ DONE (first version) - see 6c. Needs tuning by ear on real hardware: the effects are the Plus4 version's,
    converted; the C64's own SID effect data is a format of its SID driver and was not decoded.
-3. **Music** - `music.c64` is SID (GoatTracker-style). Options: convert the songs to an SN76489 player, or write a new tracker
-   format; hook `START_LEVEL_MUSIC` etc. (all currently `HAL_NOP`). Left for later by decision.
+3. ~~Music~~ DONE (6d) - the C64's own player and song data play, converted to the SN76489 every frame; see 6d. Needs listening
+   tests on real hardware (envelope shapes, noise rates, bass notes folded up).
 4. **Colour** - the palette is a first pass (black/red/blue/white; some tiles come out in odd colours, e.g. green foliage red).
    Per-level palettes via `VDU 19` at level load are cheap (tools already count colour use); a palette split by cell-row band
    (window vs side panel/text) would give two different colour sets on screen. Needs a per-level choice in `tools/make_data.py`.
@@ -231,3 +236,33 @@ Decision: Mode 1 remains the build. Ideas, roughly by value / certainty:
   bytes skipped, multicolour lookups by table (`MQL1`..`MQR2`, `SP_MC*` indexed q*8+sprite): 178 -> 144 ms. (6) `HAL_BLIT_CRIT` copies the three strips in one loop with its six operands patched per tile (9 cycles a
   byte, was 13); `TILE_ADDR` reads `J144LO/HI` tables; `CELLS_SYNC` is one unrolled copy per cell-index page (abs,X). Together
   ~71 K cycles less per step (296 K -> 225 K).
+
+## 6d. Music (done 2026-10-30)
+The C64 version's music is a stripped GoatTracker 2 play routine (SID) plus the song data, `upstream/c64/music.c64`
+(player $A000-$A3D8, tables $A442-$A9B4, order lists and patterns $A9B5-$C8C9; $A3D9-$A441 is the SID sound-effect path, dropped -
+the effects are the Plus4 version's). Nothing was re-composed or re-implemented:
+- `tools/music_port.py` translates the player instruction by instruction into ca65 (`build/data/music_core.inc`): same code, same
+  page layout (the player patches a JSR's low byte to dispatch its commands), SID stores go to shadow registers `SIDSH`, its
+  scratch pointer is $3E/$3F (saved around each call - the game's own zero page). `tools/music_test.py` runs the original and the
+  translation side by side and compares the 25 SID registers after every frame: identical for the full length of all 8 songs
+  (up to 23,426 frames). The player reads 32 bytes past its 96-entry frequency table (note numbers reach 127); songs 0, 3 and 4 do
+  this, so those bytes are kept.
+- `tools/music_conv.py` is the model of the SID -> SN76489 conversion, `platform/bbc/music.s` the 6502 version
+  (`tools/music_conv_test.py`: write for write identical to the model over the real register streams). Pitch: the SID frequency
+  register converted to the SN's 10-bit period (K / F, PAL clock - the song's note table is tuned for it, A4 = 440.09 Hz; worst
+  error 22 cents, at the highest notes, from the SN's integer period). The SN cannot go below 122 Hz: lower notes are folded up
+  whole octaves. Loudness: the SID envelope (attack/decay/sustain/release, gate, datasheet times, linear) in 16 bits, mapped to
+  the SN's 16 attenuation steps. Waveforms: all square except noise (a voice with the noise waveform drives the SN noise channel,
+  white, one of three rates picked from its frequency; the louder noise voice wins). No filter, no ring modulation, no pulse width.
+  All of that is a model, not a measurement: **tune by ear** (decay is linear here, the SID's is not; the noise rates are guesses).
+- Sound effects over music: while an effect plays it owns channel 0 (tone effects) or channel 2 and the noise channel (noise
+  effects); the music skips them and rewrites them afterwards (`tools/music_game_test.py`: the chip equals what the music alone
+  sets, 141 frames after a walk and an explosion over song 1).
+- Memory: ~3.1 KB of bank 5 for the player, tables and converter, so only **one song is resident at a time**: `HAL_MUSIC_START`
+  loads `MUSn` (built by `music_port.py songs` after linking: pointer tables, order lists and patterns of that song only, patterns
+  renumbered) with `*SRLOAD MUSn B580 5` when the song changes (title, each level, game over: a short disc access; the blank song 5 needs none).
+  To make room for the song (max 2.5 KB) the tile cache shrank: `tools/make_data.py` gives tiles with identical pictures one cache
+  slot (231 distinct plain images, plus 19 for the phases of the animated tiles = 250 slots), so the cache needs 24 slots in bank 5, not 30.
+- CPU: the vsync handler's music frame (player ~730 + converter ~1,300 cycles, two to three thousand with note changes) is about
+  2,150 cycles on average, 3,600 at most: 5.4% of the CPU. Cheap to cut further (skip silent voices) if the redraw needs it.
+- Tempo: the player is stepped once per 50 Hz vsync, as on a PAL C64 (the game's own clocks run at 50 Hz here too).

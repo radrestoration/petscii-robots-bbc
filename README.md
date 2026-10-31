@@ -5,7 +5,7 @@ Licensed under the GNU GPL v3 (see `LICENSE`), like the original game. It is bui
 as they are). Technical notes: `PORTING.md`.
 
 **Status: playable proof of concept.** All 14 levels are on the disc and the game plays from the intro menu to level play
-(seen in b-em as a Master 128; not yet on real hardware). Sound effects and the f7 overview map work; no music yet - see the to-do list in
+(seen in b-em as a Master 128; not yet on real hardware). Sound effects, music and the f7 overview map work; see the to-do list in
 `PORTING.md`.
 
 Email contact@radrestoration.com for bug reports.  This port was made with the help of Claude Code. 
@@ -40,7 +40,7 @@ RAM on a stock Master 128).
 | Escape | pause (then Y quits the level, N or Escape resumes) |
 | Return, cursor up/down | intro menu |
 | f6, f7 or f8 | overview map (the same key again toggles robots / player, any other key returns) |
-| Shift+M | music toggle (no music yet) |
+| Shift+M | music on/off |
 | Tab | cheat (the C64's C= + *) |
 
 The key table is `KEYSET` in `source/platform/bbc/hal_main.s`. b-em numbers the host function keys differently in its physical and

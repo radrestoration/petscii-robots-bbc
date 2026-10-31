@@ -253,7 +253,7 @@ SETUP_INTERRUPT:	;BBC: HAL_OS_SETUP hooks the vsync event
 RUNIRQ:	LDA	MUSIC_STATE
 	CMP	#0
 	BEQ	IRQ0
-	JSR	HAL_NOP	;music play routine
+	JSR	HAL_MUSIC_TICK	;music play routine
 IRQ0:	JSR	UPDATE_GAME_CLOCK
 	JSR	ANIMATE_WATER
 	LDA	#1
@@ -2020,21 +2020,25 @@ DMR2:	CLC
 	ADC	#00	;CARRY FLAG
 	STA	ZP1
 	;BBC: tell the HAL which plain tile is here (the tile fast path in hal_main.s), and skip the plot when it is already there
-	LDY	PRECALC_COUNT
 	LDX	TILE
-	LDA	TILEKIND,X	;1 = animated tile: always plot, and leave it to the cell scan
-	BNE	DMT0
-	LDA	TILE
-	CMP	TILE_NEW,Y	;the same plain tile was plotted here last time and nothing has touched the cells since
-	BEQ	DMT3
-	JSR	PLOT_TILE
+	PHP
+	SEI		;the vsync handler animates the tile data: the key (its phase) and the plot must see the same one
+	JSR	HAL_TILE_KEY	;A = the tile's cache slot now (animation phase included), $FF = never cached: always plot, leave it to the cell scan
 	LDY	PRECALC_COUNT
-	LDA	TILE
+	CMP	#$FF
+	BEQ	DMT0
+	CMP	TILE_NEW,Y	;the same tile image was plotted here last time and nothing has touched the cells since
+	BEQ	DMT4
+	PHA
+	JSR	PLOT_TILE
+	PLA
+	LDY	PRECALC_COUNT
 	JMP	DMT2
 DMT0:	JSR	PLOT_TILE
 	LDY	PRECALC_COUNT
 	LDA	#$FF
 DMT2:	STA	TILE_NEW,Y
+DMT4:	PLP
 DMT3:
 	;now check for sprites in this location
 	LDA	MAP_PRECALC,Y
@@ -2398,7 +2402,7 @@ DLM3:	LDA	(ZP0),Y
 	RTS
 LOAD_MSG2:	.byte 12,15,1,4,9,14,7,32,13,1,16,58
 
-; BBC: font and sprite images are in the GFXBANK image, music is not ported yet.
+; BBC: font and sprite images are in the GFXBANK image; the music player and its songs: platform/bbc/music.s.
 LOAD_CHARSET:
 LOAD_SPRITES:
 LOAD_MUSIC:
@@ -3202,10 +3206,10 @@ PLAY_GAME_OVER_MUSIC:
 	CMP	#0
 	BEQ	PGOM
 	LDA	#6		;pick song
-	JSR	HAL_NOP		;START MUSIC
+	JSR	HAL_MUSIC_START	;START MUSIC
 	RTS
 PGOM:	LDA	#7		;pick song
-	JSR	HAL_NOP		;START MUSIC
+	JSR	HAL_MUSIC_START	;START MUSIC
 	RTS
 
 DISPLAY_WIN_LOSE:
@@ -3292,7 +3296,7 @@ INTRO_SCREEN:
 	LDA	#15
 	STA	SIDVOL	;	volume
 	LDA	#4		;pick song
-	JSR	HAL_NOP		;START MUSIC
+	JSR	HAL_MUSIC_START	;START MUSIC
 	LDA	#1
 	STA	MUSIC_STATE
 	JSR	DISPLAY_INTRO_SCREEN
@@ -3337,27 +3341,27 @@ IS005:	CMP	#13	;RETURN
 IS006:	CMP	#49	;1-key
 	BNE	IS007
 	LDA	#0		;pick song (title music)
-	JSR	HAL_NOP		;START MUSIC
+	JSR	HAL_MUSIC_START	;START MUSIC
 	JMP	ISLOOP
 IS007:	CMP	#50	;2-key
 	BNE	IS008
 	LDA	#1		;pick song
-	JSR	HAL_NOP		;START MUSIC
+	JSR	HAL_MUSIC_START	;START MUSIC
 	JMP	ISLOOP
 IS008:	CMP	#51	;3-key
 	BNE	IS009
 	LDA	#2		;pick song
-	JSR	HAL_NOP		;START MUSIC
+	JSR	HAL_MUSIC_START	;START MUSIC
 	JMP	ISLOOP
 IS009:	CMP	#52	;4-key
 	BNE	IS010
 	LDA	#3		;pick song
-	JSR	HAL_NOP		;START MUSIC
+	JSR	HAL_MUSIC_START	;START MUSIC
 	JMP	ISLOOP
 IS010:	CMP	#53	;5-key
 	BNE	IS011
 	LDA	#4		;pick song
-	JSR	HAL_NOP		;START MUSIC
+	JSR	HAL_MUSIC_START	;START MUSIC
 	JMP	ISLOOP
 IS011:	;Now check SNES status for menu
 	LDA	NEW_UP
@@ -3418,7 +3422,7 @@ EXEC_COMMAND:
 	BNE	EXEC1
 	JSR	SET_CONTROLS
 	LDA	#5		;pick song (blank song)
-	JSR	HAL_NOP		;START MUSIC
+	JSR	HAL_MUSIC_START	;START MUSIC
 	LDA	#0
 	STA	MUSIC_STATE
 	LDA	#0
@@ -3697,6 +3701,7 @@ AW00:	INC	WATER_TIMER
 	RTS
 AW01:	LDA	#0
 	STA	WATER_TIMER
+	JSR	HAL_ANIM_STEP	;BBC: the animated tiles' images are cached per phase
 
 LDA	TILE_DATA_BR+204
 	STA	WATER_TEMP1
@@ -4184,7 +4189,7 @@ ANP2:	LDA	#97
 START_LEVEL_MUSIC:
 	LDY	SELECTED_MAP
 	LDA	LEVEL_MUSIC,Y	;pick song
-	JSR	HAL_NOP		;START MUSIC
+	JSR	HAL_MUSIC_START	;START MUSIC
 	LDA	#1
 	STA	MUSIC_STATE
 	RTS
@@ -4194,7 +4199,7 @@ TOGGLE_MUSIC:
 	CMP	#1
 	BNE	TGMUS1
 	LDA	#5	;pick song
-	JSR	HAL_NOP		;START MUSIC
+	JSR	HAL_MUSIC_START	;START MUSIC
 	LDA	#<MSG_MUSICOFF
 	STA	ZP0
 	LDA	#>MSG_MUSICOFF
@@ -4762,3 +4767,4 @@ SOUND_EXPLOSION:
 .include "platform/bbc/hal_low.s"
 .include "platform/bbc/hal_gfx.s"
 .include "platform/bbc/hal_main.s"
+.include "platform/bbc/music.s"

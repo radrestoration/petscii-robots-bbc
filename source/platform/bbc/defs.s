@@ -92,7 +92,11 @@ P_S       = $7A         ; (16 bit) source pointer in the tile cache
 BL_BANK   = $7C
 T_K       = $7D
 T_J       = $7E
-CACHEB5   = $A800       ; tile cache: tiles 0-112 bank 6, 113-225 bank 7 (both at &8000), 226-255 bank 5 from here
+MUS_R2    = CACHEB5 + (TILE_SLOTS - 226) * TILEBYTES   ; ... and above it (the bank-5 slots of the tile cache come first)
+MUS_R2_END = $C000      ; music: song images load here (music.s); the bank's cache slots are 16 with the tile dedup
+CACHEB5   = $A800       ; tile cache: slots 0-112 bank 6, 113-225 bank 7 (both at &8000), 226+ bank 5 from here
+TSLOT     = $9400       ; tile id -> cache slot (tiles with identical images share one; tools/make_data.py), in the data bank
+.include "tile_meta.inc"
 TILEBYTES = 144         ; 3 strips of 3 cells x 16 bytes
 MAPROW    = $1E00       ; 16 cells x 8 bytes: one cell row of the overview map being built (128 bytes)
 MAP_COL0  = 12          ; overview map block: 16 x 8 cells at column 12, row 2 of the 25-row map screen

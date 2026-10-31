@@ -38,6 +38,7 @@ def sn_ref(effect):
         frames.append(out)
 g = sim_bbc.Game(); L = g.L; c = g.cpu
 c.pc = L['START']; c.sp = 0xFF; g.run(2_000_000)
+c.m[L['MUS_PLAY']] = 0               # the title music would interleave its own chip writes: effects are tested alone (music_game_test.py: together)
 def play(i):
     sv = (c.a, c.x, c.y, c.pc, c.p(), c.sp); g.call(L['PLAY_SOUND'], a=i)
     c.a, c.x, c.y, c.pc, c.sp = sv[0], sv[1], sv[2], sv[3], sv[5]; c.setp(sv[4])

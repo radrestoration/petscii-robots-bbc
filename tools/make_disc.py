@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Package the BBC build as a bootable DFS .ssd: !BOOT (the loader), LOW, MID, GFX, TILES and
-LEVEL-A..LEVEL-N.  usage: make_disc.py out.ssd"""
+LEVEL-A..LEVEL-N and the eight song images MUS0..MUS7.  usage: make_disc.py out.ssd"""
 import os, sys, glob
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from make_bbc_ssd import build_ssd
@@ -11,5 +11,7 @@ files = [('!BOOT', 0x1400, 0x1400, rd('loader.bin')), ('LOW', 0x0E00, 0x0E00, rd
          ('MID', 0x3000, 0x3000, mid), ('GFX', 0, 0, rd('robots-gfx.bin')), ('TILES', 0, 0, rd('data/tiles.bin')), ('SCREENS', 0, 0, rd('robots-scr.bin'))]
 for p in sorted(glob.glob(os.path.join(B, 'data', 'level?.bin'))):
     files.append(('LEVEL-' + p[-5].upper(), 0, 0, open(p, 'rb').read()))
+for k in range(8):
+    files.append(('MUS%d' % k, 0, 0, rd('MUS%d' % k)))
 open(sys.argv[1], 'wb').write(build_ssd(files, title='ROBOTS', boot_option=2))
 print('wrote %s: %s' % (sys.argv[1], ', '.join('%s %d' % (n, len(d)) for n, _, _, d in files)))

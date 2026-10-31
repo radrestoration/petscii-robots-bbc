@@ -22,9 +22,10 @@ SP_C1:          .res 8
 SP_R0:          .res 8
 SP_R1:          .res 8
 SPR_EN:         .res 1          ; bit n = sprite n enabled
-TILE_NEW:       .res WIN_W*WIN_H         ; tile id the game just drew at each window position, $FF = overlay/animated/unknown
+TILE_NEW:       .res WIN_W*WIN_H         ; cache slot (HAL_TILE_KEY) of the tile the game just drew at each window position, $FF = overlay/uncached/unknown
 TILE_SHOWN:     .res WIN_W*WIN_H         ; ... and what is on screen
-TILE_VALID:     .res 256        ; tile image is in the cache
+TILE_VALID:     .res 256        ; per cache slot: the tile image is in the cache
+KPHASE:         .res 4          ; per TILEKIND: the animation phase now (kind 2 counts 0-2, kind 3 counts 0-1; HAL_ANIM_STEP)
 TBUF:           .res TILEBYTES  ; tile image being built
 SIG:            .res 8          ; signature of the sprite being examined
 ; keyboard (stand-ins for the C64 KERNAL's variables the game pokes)
@@ -1197,16 +1198,37 @@ HAL_CLEAR_TAIL:
         rts
 
 ; ---- window tile fast path --------------------------------------------------------------------
-; DRAW_MAP_WINDOW records the base tile id it plotted at each of the 11x7 window positions in TILE_NEW
-; ($FF where an overlay was plotted on top or the tile is animated).  A position whose plain tile changed
+; DRAW_MAP_WINDOW records the cache slot of the plain tile it plotted at each of the 11x7 window positions in TILE_NEW
+; ($FF where an overlay was plotted on top or the tile is never cached).  A position whose slot changed
 ; is drawn by copying a cached 24x24 image (144 bytes) instead of drawing 9 cells; SH_* is brought up
 ; to date so the cell scan finds nothing to do there.  Positions with a sprite over them, overlays and
-; animated tiles are left to the cell scan.  Tile images are rendered on first use from the cells the
-; game plotted (VSCR/VCOL) and kept in sideways banks 6/7 (and 5), indexed directly by tile id.
-TILEKIND:                       ; 1 = tile data is animated by the game (ANIMATE_WATER): never cached
-        .repeat 256, i
-        .byte (i = 20) | (i = 21) | (i = 22) | (i = 143) | (i = 148) | (i = 196) | (i = 197) | (i = 200) | (i = 201) | (i = 204) | (i = 221)
-        .endrepeat
+; uncached tiles are left to the cell scan.  Tile images are rendered on first use from the cells the
+; game plotted (VSCR/VCOL) and kept in sideways banks 6/7 (and 5), indexed by slot.
+; The slot is TSLOT[id] + the animation phase of the tile's kind: the animated tiles (water, fans...) cycle through 2 or 3 images
+; (the game's ANIMATE_WATER rotates their characters/colours; tools/anim_test.py checks that), each with its own slot.
+.include "tile_kind.inc"        ; TILEKIND: per tile id, 0 plain, 1 never cached, 2 animated (period 3), 3 animated (period 2)
+
+; X = tile id -> A = its cache slot now, $FF = never cached.  (Y is used.)  The caller must keep interrupts off from here until it
+; has plotted the tile, so that the tile data it plots belongs to the phase it keyed.
+HAL_TILE_KEY:
+        ldy TILEKIND,x
+        lda TSLOT,x             ; (255 for the uncached tiles: kind 1 adds 0)
+        clc
+        adc KPHASE,y
+        rts
+
+; one animation step (ANIMATE_WATER, from the vsync handler, just before it rotates the tile data): move the phases on
+HAL_ANIM_STEP:
+        ldx KPHASE+2
+        inx
+        cpx #3
+        bcc :+
+        ldx #0
+:       stx KPHASE+2
+        lda KPHASE+3
+        eor #1
+        sta KPHASE+3
+        rts
 
 KOFF:   .byte 0,1,2,40,41,42,80,81,82
 
@@ -1325,7 +1347,7 @@ CELLS_SYNC:
         SYNCPAGE 1
         SYNCPAGE 0
 
-; X = tile id -> P_S = address of its image, BL_BANK = bank: tiles 0-112 bank 6, 113-225 bank 7, 226+ bank 5 at CACHEB5
+; X = cache slot -> P_S = address of its image, BL_BANK = bank: slots 0-112 bank 6, 113-225 bank 7, 226+ bank 5 at CACHEB5
 J144LO: .repeat 113, j
         .byte <(j * TILEBYTES)
         .endrepeat
@@ -1720,11 +1742,19 @@ EVT:    cmp #4
         pha
         tya
         pha
+        lda ROMSEL_SH           ; the event can arrive while the MOS has another bank paged (a *SRLOAD into bank 5 is copying):
+        pha                     ; the game's per-frame code assumes DATABANK, so page it for the handler and give the MOS its bank back
+        lda #DATABANK
+        sta ROMSEL_SH
+        sta ROMSEL
         inc TICKS
         lda #1
         sta VSYNCFLAG
         jsr SOUND_TICK
         jsr RUNIRQ
+        pla
+        sta ROMSEL_SH
+        sta ROMSEL
         pla
         tay
         pla
