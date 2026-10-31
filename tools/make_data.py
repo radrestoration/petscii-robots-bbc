@@ -14,7 +14,12 @@ U = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__)
 O = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(__file__), '..', 'build', 'data')
 os.makedirs(O, exist_ok=True)
 w = lambda n, b: open(os.path.join(O, n), 'wb').write(b)
-w('font.bin', c64data.load_font(U))
+# The game's font has no readable '@' (screen code 0 is a tile piece).  Code 126 is a block graphic nothing uses (checked: no tile, screen
+# or immediate refers to it), so it carries an '@' in the font's letter style, for the contact address on the title screen.
+AT = ['.#####.', '#.....#', '#.###.#', '#.#.#.#', '#.####.', '#......', '.#####.', '.......']
+font = bytearray(c64data.load_font(U))
+font[126 * 8:127 * 8] = bytes(int(r.replace('.', '0').replace('#', '1') + '0', 2) for r in AT)
+w('font.bin', bytes(font))
 sp = open(f'{U}/sprites.gfx', 'rb').read()[2:]
 assert len(sp) == 43 * 64, len(sp)
 w('sprites.bin', sp)
