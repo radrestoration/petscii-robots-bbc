@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Mechanical ACME -> ca65 translation for the PETSCII Robots sources.
 Only the ACME features the sources really use (checked by grep): !BYTE, !PET, !SCR,
 !SOURCE, !to, *=, labels without colons, bare ASL/LSR/ROL/ROR.

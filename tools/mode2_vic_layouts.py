@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Mode 2 layouts in the VIC-20 manner: 8x8-pixel cells (each 8 pixels wide = 4 bytes), VIC-20 tileset/font, 8 colours, no
 down-sampling; how many tiles fit?  Mode 2 memory: a cell is 32 bytes, so cols x rows x 32 <= 20480 (the 20 KB shadow screen).
   L1  20 cols x 32 rows (standard Mode 2):           6 x 9 tiles

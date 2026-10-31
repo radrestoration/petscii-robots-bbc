@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Translate the C64 version's music player (upstream/c64/music.c64: a stripped GoatTracker 2 play routine at $A000, SID) into
 ca65 source for the BBC build, so the real player logic and the real song data are what plays.
 

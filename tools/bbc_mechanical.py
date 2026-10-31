@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """One-off mechanical pass over the translated C64 sources (run once on source/robots.s and
 source/background_tasks.s; kept for the record - the sources are hand-maintained afterwards).
  $FB-$FE zero-page pointers -> ZP0-ZP3 (BBC user zero page), variable page $06xx/$07xx -> $16xx/$17xx,

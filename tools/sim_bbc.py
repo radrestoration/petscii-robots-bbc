@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 """Headless BBC Master harness on sim6502.py: main RAM, shadow RAM (ACCCON bit 2 'X' swaps
 &3000-&7FFF), sideways banks (ROMSEL swaps &8000-&BFFF), load the linked images, call routines,
 decode the shadow Mode 1 screen.  No emulator, no display.  Layout per source/platform/bbc/defs.s."""

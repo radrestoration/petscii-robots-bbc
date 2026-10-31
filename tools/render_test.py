@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Cell renderer + software sprites vs an independent Python reference (C64 font/colours -> logical
 colours).  Writes build/preview/render_test.png.  usage: render_test.py"""
 import os, sys, numpy as np

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Does the 6502 SID -> SN76489 converter (platform/bbc/music.s) do exactly what the reference model (tools/music_conv.py) does?
 The SID registers come from the original C64 player running in the simulator; after each frame they are put in the shadow
 registers and MUS_CONVERT is run; its SN writes must equal the model's, byte for byte.   usage: music_conv_test.py [frames [songs]]"""

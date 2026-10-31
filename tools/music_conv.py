@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Reference model of the SID -> SN76489 conversion the BBC music player does every 50 Hz frame (the 6502 version is
 platform/bbc/music.s; tools/music_conv_test.py checks it against this, write for write).
 

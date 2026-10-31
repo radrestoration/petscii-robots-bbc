@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """The boot loader in the simulator: Master check, shadow Mode 7, the four loads, jump to the game."""
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

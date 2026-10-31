@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Package the BBC build as a bootable DFS .ssd: !BOOT (the loader), LOW, MID, GFX, TILES and
 LEVEL-A..LEVEL-N and the eight song images MUS0..MUS7.  usage: make_disc.py out.ssd"""
 import os, sys, glob

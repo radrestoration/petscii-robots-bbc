@@ -1,3 +1,4 @@
+; SPDX-License-Identifier: GPL-3.0-only
 ; BBC Master port - the only HAL code that runs while ACCCON.X = 1 (the CPU sees the shadow
 ; screen at &3000-&7FFF) so it must sit in low RAM, plus the tables the renderer reads.
 ; Interrupts are off for the whole of each critical section, so the vsync handler can never run

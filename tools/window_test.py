@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Is the game window the right piece of the map?  After moving (keys) and after jumping the player around, compare the virtual
 screen (VSCR/VCOL) of every window tile with the cells of the map tile that should be there (tiles with a unit on them are
 skipped).  Catches off-by-one errors in the window origin, the edge-row clamp and the skip-replot shortcut, which the

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Mode 1 colour trick preview: synthesise more than 4 colours by dithering the lit pixels of a cell between two palette
 colours (checkerboard by pixel parity), per C64 colour.  Compares the solid-colour build with the dithered version, with a
 CRT-like horizontal blur on the right.  Writes build/preview/dither_*.png.   usage: dither_preview.py [level letter]"""

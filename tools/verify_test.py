@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Play a few steps in the simulator and check that the screen equals an independent rendering of the
 virtual screen (VSCR/VCOL) plus the virtual sprites - i.e. the tile fast path, the cell scan and the
 sprite compositing agree.  Also reports how many cells/tiles each step drew."""

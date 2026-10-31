@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Convert the Plus4 version's sound effects (TED: 10-bit register, volume 0-8, bit 5 tone / bit 6 noise) for the BBC's SN76489
 and write build/data/sound.inc.  The C64's SID effect data is a format of the SID driver in music.c64 (not decoded here); the Plus4
 data is documented in its SOUND.ASM and the game's 18 effects exist there.

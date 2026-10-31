@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 """Shared loaders for the C64 assets of PETSCII Robots (formats verified from C64ROBOTS.ASM,
 see tiles_preview.py's docstring) and the first-pass Mode 1 palette."""
 import itertools, numpy as np

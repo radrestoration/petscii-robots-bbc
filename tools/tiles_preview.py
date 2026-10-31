@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Mode 1 (BBC) quantisation preview of the C64 tileset and map windows.
 Formats checked against C64ROBOTS.ASM: tileset.gfx = 2-byte load addr + 20 pages
 (DESTRUCT, ATTRIB, 9 char pages TL..BR, 9 colour pages TL..BR); gfxfont.prg =

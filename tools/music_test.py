@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Does the translated music player (tools/music_port.py) do exactly what the C64 original does?  Both are run in the simulator,
 frame by frame - the original with the whole C64 file, the translation with only the repacked image of that one song; after every frame the 25 SID registers of the original must equal the shadow registers
 of the translation.  usage: music_test.py [frames per song (default: all)] [song ...]"""

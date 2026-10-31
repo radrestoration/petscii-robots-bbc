@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """The music in the running game: boot to the title screen (song 4), then start level A (song 1), in the headless simulator.
 Checks that each song's image is loaded with *SRLOAD, and that the bytes written to the SN76489 are exactly what the reference model
 (tools/music_conv.py) makes of the original C64 player's SID registers for that song - i.e. the whole chain (image load, bank

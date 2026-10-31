@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Sound effects: play each of the C64 version's 19 sound ids in the simulator, capture the bytes written to the SN76489 per frame
 and compare with a straight Python implementation of the effect player working from build/data/sound.inc; also checks priority
 (a less important sound doesn't interrupt) and that port A's direction is restored to $7F after every update."""

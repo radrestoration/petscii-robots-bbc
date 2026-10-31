@@ -1,3 +1,4 @@
+; SPDX-License-Identifier: GPL-3.0-only
 ; BBC Master port - music.  The C64 version's player (a stripped GoatTracker 2 play routine, SID) is translated mechanically by
 ; tools/music_port.py (build/data/music_core.inc), so the real song data and the real player logic run; its SID register writes
 ; land in SIDSH, and MUS_CONVERT turns the 25 shadow registers into SN76489 writes every 50 Hz frame (model: tools/music_conv.py).

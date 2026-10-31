@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """The animated tiles (water, fans, server lights, trash compactor) are cached one image per animation phase (make_data.py:
 TILEKIND/TSLOT, HAL_TILE_KEY/HAL_ANIM_STEP in hal_main.s).  Checks, in the headless simulator:
   1. every tile of kind 2 / 3 really repeats with period 3 / 2 under the game's own ANIMATE_WATER, starting from its initial

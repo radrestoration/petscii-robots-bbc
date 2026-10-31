@@ -1,3 +1,4 @@
+; SPDX-License-Identifier: GPL-3.0-only
 ; BBC Master port - HAL code that runs with ACCCON.X = 0 (so it can live in MID with the game):
 ; initialisation, the refresh driver, software-sprite change tracking, keyboard, the vsync
 ; tick, and data loading.  The critical sections themselves are in hal_low.s.

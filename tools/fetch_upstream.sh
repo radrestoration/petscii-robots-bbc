@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
 # Fetch the third-party sources this port reads, at the commits it was built from, into upstream/ (not part of this repo).
 #   c64   - assets (tileset, font, sprites, 14 levels) and the C64 source `make data` takes the game screen layout from
 #   pet   - the game-logic source (BACKGROUND_TASKS.ASM) that source/background_tasks.s was translated from

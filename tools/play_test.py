@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Drive the BBC build in the simulator: intro -> START GAME -> level A, optionally some moves; dump PNGs.
 usage: play_test.py [keys...]   keys are OS characters or names: up down left right fire"""
 import os, sys, numpy as np

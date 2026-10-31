@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 """Minimal headless NMOS 6502 interpreter (documented opcodes only) with
 approximate cycle counts - for unit-testing the C64 build without any
 emulator or display."""

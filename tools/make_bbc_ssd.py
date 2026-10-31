@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Minimal BBC DFS single-density disk (.ssd) image builder.
 
 Format reverse-derived from b-em's utils/makedfs.py (a

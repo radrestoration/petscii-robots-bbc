@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Convert the C64 assets into BBC disc files in build/data/:
   font.bin    256 x 8-byte 1-bit glyphs (incbin'd into the sideways-RAM image)
   sprites.bin 43 x 64-byte C64 sprites (loaded as-is, converted at draw time)

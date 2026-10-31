@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Mode 2 (160x256, 8 colours) previews for comparison with the current Mode 1 build.  Writes build/preview/mode2_*.png
 (all shown at 4:3 as a monitor would: 640x480).  No game code involved: tiles are composed from the level map.
   A  Mode 1 as built (from the simulator's screen: needs build/preview/play.png from tools/play_test.py)

@@ -1,3 +1,4 @@
+; SPDX-License-Identifier: GPL-3.0-only
 ; BBC Master port - memory map and hardware definitions.
 ; Master 128, shadow Mode 1 (MODE 129): the 20 KB screen lives in LYNNE, so main RAM
 ; &3000-&7FFF is free for the game as long as ACCCON bit 2 (X) is 0.  Whenever X is 1

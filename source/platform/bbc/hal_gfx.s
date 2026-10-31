@@ -1,3 +1,4 @@
+; SPDX-License-Identifier: GPL-3.0-only
 ; BBC Master port - Mode 1 renderer and software sprites.  Runs from the sideways bank GFXBANK
 ; at &8000, only ever entered by the trampolines in hal_low.s with interrupts off, ROMSEL =
 ; GFXBANK and ACCCON.X = 1 (so &3000-&7FFF is the screen).  See defs.s.

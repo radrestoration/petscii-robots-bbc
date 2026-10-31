@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Overview map (f7): boot to level A, press f7, check the 128x64 picture (one white pixel per tile that can't be walked on,
 plus the blinking player dot) against the map data, return to the game.  Writes build/preview/map*.png."""
 import os, sys, numpy as np

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Latency of a movement step in the simulator: cycles from the key press to the last tile/cell drawn for that step, and the
 cycles the display code itself used.  usage: step_timing.py"""
 import os, sys

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-3.0-only
 # PETSCII Robots - BBC Master port.   make help
 -include tools.cfg
 ifneq ($(strip $(CC65_HOME)),)

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Cursor keys held down without any character in the OS keyboard buffer (as if the OS's cursor-key mode were off) must still move
 the player and the intro menu selection: HAL_GETKEY scans them directly."""
 import os, sys
