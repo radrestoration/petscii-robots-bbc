@@ -35,8 +35,8 @@ SN_OUT: ldy LOGPTR
 def build():
     t = tempfile.mkdtemp()
     open(t + '/h.s', 'w').write(HARNESS)
-    open(t + '/h.cfg', 'w').write('MEMORY { C: start=$3000, size=$2000, file="%O-c.bin"; G: start=$8000, size=$4000, file="%O-g.bin"; }\n'
-                                  'SEGMENTS { CODE: load=C, type=rw; GFX: load=G, type=rw, align=256; }\n')
+    open(t + '/h.cfg', 'w').write('MEMORY { V: start=$1200, size=$0400, file=""; C: start=$3000, size=$2000, file="%O-c.bin"; G: start=$8000, size=$4000, file="%O-g.bin"; }\n'
+                                  'SEGMENTS { CODE: load=C, type=rw; GFX: load=G, type=rw, align=256; HALVARS: load=V, type=bss; }\n')
     env = dict(os.environ, CC65_HOME=C65)
     I = ['-I', os.path.join(R, 'build', 'data'), '-I', os.path.join(R, 'source', 'platform', 'bbc')]
     subprocess.check_call([C65 + '/bin/ca65', '-g', '-t', 'none'] + I + ['-o', t + '/h.o', t + '/h.s'], env=env)
@@ -59,7 +59,7 @@ for s in songs:
     sidr = [0] * 32
     o.write_hooks.append(lambda a, v: sidr.__setitem__(a - 0xD400, v) if 0xD400 <= a <= 0xD41F else None)
     p = CPU(); p.m[0x3000:0x3000 + len(code)] = code; p.m[0x8000:0x8000 + len(gfx)] = gfx; p.m[0xFFFE] = 0xEA
-    call(o, 0xA000, s); call(p, sym['MUS_RESET']); ref = music_conv.Conv()
+    call(o, 0xA000, s); call(p, sym['MUS_RESET']); gain = music_conv.LEVEL_GAIN if s < 4 else 0; p.m[sym['MUS_GAIN']] = gain; ref = music_conv.Conv(gain)
     cyc = 0; tot = 0
     for f in range(nfr):
         call(o, 0xA003)

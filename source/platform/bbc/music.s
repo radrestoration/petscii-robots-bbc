@@ -25,7 +25,8 @@ MZP    = $3E                    ; the player's scratch pointer; the game's own u
         .include "music_tab.inc"                  ; TB1, TB2
         .include "music_conv.inc"                 ; MCQ_*, MCATK_*, MCDR_*, MCTHR
 
-; ---- SID shadow registers and the converter's state ------------------------------------------------
+; ---- SID shadow registers and the converter's state (main RAM: bank 5 has no room to spare) --------------------------
+.segment "HALVARS"
 SIDSH:  .res 25
 MUS_LVL_L: .res 3               ; envelope level (16 bit) per voice
 MUS_LVL_H: .res 3
@@ -40,8 +41,11 @@ MUS_N_L:   .res 3               ; ... and its period
 MUS_N_H:   .res 3
 MUS_LR:    .res 1               ; noise rate last written ($FF unknown)
 MUS_LNA:   .res 1               ; noise attenuation last written
+MUS_GAIN:  .res 1               ; attenuation steps taken off (level songs are mixed low; set by HAL_MUSIC_START)
 MUS_NATT:  .res 1
 MUS_RATE:  .res 1
+; (the converter's temporaries: HALVARS is full, so they take 22 bytes of the main code's spare room)
+.segment "CODE"
 MT_CTRL:   .res 1               ; the voice being converted
 MT_AD:     .res 1
 MT_SR:     .res 1
@@ -59,6 +63,7 @@ MT_D:      .res 1
 MT_F5:     .res 1
 MT_R:      .res 1
 MT_N:      .res 2
+.segment "GFX"
 
 MVOFF:  .byte 0, 7, 14
 MCH:    .byte $80, $A0, $C0     ; SN latch bytes: tone period
@@ -322,17 +327,44 @@ MUS_CONVERT:
         bcs @gt                 ; (always: the carry is set here)
 @off:   lda #15
         sta MT_ATT
-@gt:    lda MT_CTRL
+@gt:    lda MT_ATT              ; louder by the song's gain (a silent voice stays silent)
+        cmp #15
+        beq @gd
+        sec
+        sbc MUS_GAIN
+        bcs :+
+        lda #0
+:       sta MT_ATT
+@gd:    lda MT_CTRL
         bpl @tone
-        lda MT_ATT              ; noise waveform: the noise channel takes it, the louder voice wins
-        cmp MUS_NATT
+        ldy #0                  ; Y = 1: this noise voice goes through the low-pass filter (a low thump on the C64, not hiss)
+        lda SIDSH+23
+        and MBIT,x
+        beq :+
+        lda SIDSH+24
+        and #$10
+        beq :+
+        iny
+:       lda MT_ATT              ; noise waveform: the noise channel takes it, the louder voice wins
+        cpy #0
+        beq @nf
+        cmp #15
+        beq @nf
+        clc
+        adc #MC_FILT_ATT
+        cmp #15
+        bcc @nf
+        lda #14
+@nf:    cmp MUS_NATT
         bcs @nn
         sta MUS_NATT
+        cpy #0
+        bne @r2
         lda MT_FH
         bmi @r0
         cmp #$40
         bcs @r1
-        lda #2
+@r2:    lda #2
         bne @rs
 @r1:    lda #1
         bne @rs
@@ -433,8 +465,43 @@ MUSIC_END:
 MUS_PLAY:       .byte 0         ; non-zero: a song is playing
 MUS_LOADED:     .byte $FF       ; song whose image is in bank 5
 MUS_SONG:       .byte 0
+MUS_ERR:        .byte 0         ; non-zero: the last song image could not be loaded (the game prints a message; see HAL_MUSIC_CHECK)
+MUS_TRIES:      .byte 0
+
+; The first order list of every song image starts right after the pointer tables, so MORDLO/MORDHI [0] are the same for all songs;
+; a load that did not happen leaves the byte HAL_MUSIC_START cleared before it.
+MUS_OL = MUS_R2 + 6 + 2 * MUS_NP
+
+; page bank 5 and set the high byte of the first order-list pointer to A (the check byte), or read it into A (MUS_CHECK_GET)
+MUS_CHECK_CLEAR:
+        php
+        sei
+        ldx #GFXBANK
+        stx ROMSEL_SH
+        stx ROMSEL
+        lda #0
+        sta MORDHI
+        bpl MUS_CHECK_END
+MUS_CHECK_GET:
+        php
+        sei
+        ldx #GFXBANK
+        stx ROMSEL_SH
+        stx ROMSEL
+        lda MORDHI
+        ldx MORDLO
+MUS_CHECK_END:
+        pha
+        lda #DATABANK
+        sta ROMSEL_SH
+        sta ROMSEL
+        pla
+        plp
+        rts
 
 ; HAL_MUSIC_START: A = the C64 version's song number (0-7; 5 = silence).  Loads the song image if another one is resident.
+; The image is checked after the load (the first order-list pointer is what the file says) and the load retried up to three times:
+; MUS_ERR is set if it never arrives (HAL_MUSIC_CHECK), and then no music is played.
 HAL_MUSIC_START:
         sta MUS_SONG
         php
@@ -455,11 +522,33 @@ HAL_MUSIC_START:
 :       cmp MUS_LOADED
         beq @init
         sta MUS_LOADED
-        tay
+        php                     ; the disc read takes seconds and the player is stopped meanwhile: don't leave the old song's tones on
+        sei
+        jsr SN_BEGIN
+        jsr SN_SILENCE
+        jsr SN_END
+        plp
+        lda #3
+        sta MUS_TRIES
+@load:  jsr MUS_CHECK_CLEAR
+        ldy MUS_SONG
         ldx MUS_CMDL,y
         lda MUS_CMDH,y
         tay
-        jsr HAL_OSCLI           ; X/Y = command
+        jsr HAL_OSCLI
+        jsr MUS_CHECK_GET
+        cmp #>MUS_OL
+        bne @bad
+        cpx #<MUS_OL
+        beq @ok
+@bad:   dec MUS_TRIES
+        bne @load
+        lda #$FF                ; no image: nothing to play
+        sta MUS_LOADED
+        sta MUS_ERR
+        rts
+@ok:    lda #0
+        sta MUS_ERR
 @init:  php
         sei
         lda $3E
@@ -469,6 +558,12 @@ HAL_MUSIC_START:
         lda #GFXBANK
         sta ROMSEL_SH
         sta ROMSEL
+        lda MUS_SONG            ; the level songs (0-3) are played louder
+        cmp #4
+        lda #MC_LEVEL_GAIN
+        bcc :+
+        lda #0
+:       sta MUS_GAIN
         jsr MUS_RESET
         lda #0
         jsr MUSIC_CORE

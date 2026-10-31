@@ -95,6 +95,8 @@ class Game(BBC):
         c.traps[0xFFF4] = self._osbyte
         c.traps[0xFFF7] = self._oscli
         self.next_irq = 40000
+        self.fail_mus = 0                    # test: this many song loads silently deliver nothing
+        self.load_frames = 0                 # vsync events delivered during each *SRLOAD (0 = the load is instantaneous)
     def load_level(self, ch):
         d = open(os.path.join(B, 'data', 'level%s.bin' % ch), 'rb').read()
         self.banks[4][0x1500:0x1500+len(d)] = d
@@ -111,11 +113,22 @@ class Game(BBC):
     def _oscli(self, c):
         s = bytes(c.m[c.x | (c.y << 8):][:80]).split(b'\r')[0].decode(); self.oscli_log.append(s)
         p = s.split()
-        if p[0].upper() == '*SRLOAD' and p[1].upper().startswith('MUS'):      # a song image into a sideways bank
-            img = open(os.path.join(B, p[1].upper()), 'rb').read(); addr = int(p[2], 16); bank = int(p[3])
+        if p[0].upper() != '*SRLOAD': return
+        # A real *SRLOAD takes the disc a while, with interrupts on: the vsync event fires meanwhile, and the MOS has the target bank
+        # paged in for the copy.  `load_frames` events are delivered with that bank paged, as on the machine (the handler has to cope).
+        bank = int(p[3]) if len(p) > 3 else None
+        old = self.rom
+        if bank is not None and self.load_frames and c.m[0x0220] | (c.m[0x0221] << 8) == self.L['EVT']:
+            self.select_bank(bank)
+            for _ in range(self.load_frames): self.vsync()
+            self.select_bank(old)
+        if p[1].upper().startswith('MUS') and self.fail_mus:      # (test: the disc read does not deliver the image)
+            self.fail_mus -= 1
+        elif p[1].upper().startswith('MUS'):      # a song image into a sideways bank
+            img = open(os.path.join(B, p[1].upper()), 'rb').read(); addr = int(p[2], 16)
             if self.rom == bank: self.cpu.m[addr:addr + len(img)] = img
             else: self.banks[bank][addr - 0x8000:addr - 0x8000 + len(img)] = img
-        elif p[0].upper() == '*SRLOAD':        # honour level loads
+        else:                                   # honour level loads
             self.load_level(p[1][-1].upper())
     def run(self, cycles):
         """run the main program for `cycles`, taking a vsync event every 20 ms"""

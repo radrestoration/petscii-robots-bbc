@@ -60,7 +60,7 @@ CRTC start address moved (`HAL_VIEW_CENTRE`) so they sit centred; `HAL_VIEW_FULL
 | &2500, &2A00 | `SH_CH`, `SH_CO` (what is on screen) |
 | &2F00 | virtual VIC registers, sprite pointers |
 | &1D80 / &1E00 | `SPRTILE` (99 bytes) / `MAPROW` (128 bytes) |
-| &3000-&7EE1 MID | game code and sound data (~19.7 KB, limit &8000: ~285 bytes spare) |
+| &3000-&7F87 MID | game code and sound data (~19.7 KB, limit &8000: ~120 bytes spare) |
 | bank 4 (&8000, always paged in) | tile tables, level units (&9500), map (&9800), compressed screens (&B800-&BFDB) - loaded with `*SRLOAD` |
 | bank 5 | renderer, font, sprite images (paged in inside a cell draw); the music player, converter and tables (to &A7E8, paged in by the vsync handler); tile cache for slots 226+ at &A800 (24 slots); the current song's image at &B580-&BFFF |
 | banks 6, 7 | tile image cache (slots 0-225; tiles with identical pictures share a slot: `TSLOT` at &9400 of bank 4) |
@@ -254,6 +254,10 @@ the effects are the Plus4 version's). Nothing was re-composed or re-implemented:
   whole octaves. Loudness: the SID envelope (attack/decay/sustain/release, gate, datasheet times, linear) in 16 bits, mapped to
   the SN's 16 attenuation steps. Waveforms: all square except noise (a voice with the noise waveform drives the SN noise channel,
   white, one of three rates picked from its frequency; the louder noise voice wins). No filter, no ring modulation, no pulse width.
+  Two by-ear corrections from the first hardware test (level music was quiet and staticky): the level songs (0-3) are mixed about
+  10 dB lower than the title tune, so they are played `LEVEL_GAIN` = 4 attenuation steps louder (`MUS_GAIN`, set by `HAL_MUSIC_START`);
+  and a noise voice the song routes through the SID's low-pass filter (reg 23 bit n, reg 24 bit 4 - the level songs' drum voice) is a
+  low thump on the C64, so it gets the lowest SN noise rate and `FILT_ATT` = 2 steps less loudness instead of full-range hiss.
   All of that is a model, not a measurement: **tune by ear** (decay is linear here, the SID's is not; the noise rates are guesses).
 - Sound effects over music: while an effect plays it owns channel 0 (tone effects) or channel 2 and the noise channel (noise
   effects); the music skips them and rewrites them afterwards (`tools/music_game_test.py`: the chip equals what the music alone

@@ -17,7 +17,7 @@ def model(song, frames):
         if a is not None: o.a = a
         o.sp = 0xFF; o.push(0xFF); o.push(0xFD); o.pc = addr
         while o.pc != 0xFFFE: o.step()
-    call(0xA000, song); cv = music_conv.Conv(); out = []
+    call(0xA000, song); cv = music_conv.Conv(music_conv.LEVEL_GAIN if song < 4 else 0); out = []
     for f in range(frames):
         call(0xA003); out.append(cv.frame(sidr[:25]))
     return out
@@ -93,4 +93,11 @@ for _ in range(600):                                                  # then, fr
 print('chip state vs the music alone, %d frames with voice 0 or 2 sounding after a tone and a noise effect: %s' % (compared, 'same' if good and compared else 'DIFFERENT'))
 good = good and compared > 0
 ok &= good
+# the song image is checked after each *SRLOAD and the load retried (HAL_MUSIC_START); MUS_ERR tells the game when it never arrives
+for fails, want_err in ((2, 0), (9, 255)):
+    g2 = sim_bbc.Game(); c2 = g2.cpu; c2.pc = g2.L['START']; c2.sp = 0xFF; g2.run(4_000_000)
+    g2.fail_mus = fails; g2.keys.append(13); g2.run(14_000_000)
+    n = len([x for x in g2.oscli_log if 'MUS1' in x]); err = c2.m[g2.L['MUS_ERR']]; playing = c2.m[g2.L['MUS_PLAY']]
+    good = err == want_err and n == 3 and playing == (0 if want_err else 1)
+    print('level song load fails %d times: %d tries, MUS_ERR %d, playing %d: %s' % (fails, n, err, playing, 'ok' if good else 'WRONG')); ok &= good
 sys.exit(0 if ok else 1)
