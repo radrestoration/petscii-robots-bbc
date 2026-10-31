@@ -12,12 +12,13 @@ PYTHON ?= python3 -I
 
 SRC = source/robots.s source/background_tasks.s $(wildcard source/platform/bbc/*.s)
 
-.PHONY: help upstream data all test clean ssd
+.PHONY: help upstream data all test clean ssd zip
 help:
 	@echo "make upstream fetch the C64/PET/VIC-20 sources and assets the build reads (tools/fetch_upstream.sh)"
 	@echo "make data    convert the C64 assets (build/data)"
 	@echo "make all     assemble + link the BBC images (build/robots-{low,mid,gfx}.bin)"
 	@echo "make ssd     build/robots.ssd (boots on a Master: shift-break)"
+	@echo "make zip      build/petscii-robots-bbc.zip: the disc, run.sh, README, LICENSE (for a release)"
 	@echo "make test    renderer, sprite, whole-screen, loader, overview-map and sound and music tests in the headless 6502 simulator (~8 min)"
 	@echo "make clean"
 
@@ -56,6 +57,11 @@ build/MUS0: build/robots-mid.bin tools/music_port.py
 ssd: all build/loader.bin build/MUS0
 	@grep -q 'name="START",.*val=0x3000' build/robots.dbg || (echo "START moved: update the loader"; false)
 	$(PYTHON) tools/make_disc.py build/robots.ssd
+
+ZIP = build/petscii-robots-bbc.zip
+
+zip: ssd tools/make_zip.py tools/dist_run.sh README.md LICENSE
+	$(PYTHON) tools/make_zip.py $(ZIP)
 
 test: all build/loader.bin
 	$(PYTHON) tools/render_test.py

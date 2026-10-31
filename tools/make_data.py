@@ -70,9 +70,9 @@ def rle_enc(cells):                 # the game's format: 96,value,count-1 for ru
         else: out += [v] * n
         i += n
     return out
-def tall(cells, blank):             # rows 0-20 as is; 6 more copies of row 20 (window / empty panel); old rows 21-24 (info, health) below; blank row 31
-    rows = [cells[r*40:(r+1)*40] for r in range(25)]
-    return sum(rows[:21] + [rows[20]] * 6 + rows[21:25] + [[blank] * 40], [])
+def tall(cells, blank):             # rows 0-20 as is; 6 more copies of row 20 (window / empty panel); old rows 21-24 (info, health) below;
+    rows = [cells[r*40:(r+1)*40] for r in range(25)]      # row 31 = a 4th info row: the last info row's left 34 cells (text + the blue line), the health column blank
+    return sum(rows[:21] + [rows[20]] * 6 + rows[21:25] + [rows[24][:34] + [blank] * 6], [])
 for name, nxt, blank in (('SCR_TEXT', 'SCR_COLOR', 32), ('SCR_COLOR', 'SCR_ENDGAME', 0xF1)):
     cells = tall(rle_dec(grab(name, nxt), 1000), blank); enc = rle_enc(cells); assert rle_dec(enc, 1280) == cells
     open(os.path.join(O, name.lower() + '.inc'), 'w').write('\n'.join('\t.byte ' + ','.join(map(str, enc[k:k+16])) for k in range(0, len(enc), 16)) + '\n')
