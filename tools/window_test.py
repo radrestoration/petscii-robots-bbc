@@ -36,7 +36,7 @@ fails = check('level start')
 for k, name in ((137, 'right'), (137, 'right'), (138, 'down'), (138, 'down'), (138, 'down'), (136, 'left'), (139, 'up'), (139, 'up'), (139, 'up')):
     g.keys.append(k); settle(0.8); fails += check('after %s' % name) > 0
 for x, y in ((22, 4), (22, 3), (22, 60), (5, 30), (60, 20)):
-    m[0x9540] = x; m[0x9580] = y
+    g.quiesce(); m[0x9540] = x; m[0x9580] = y
     sv = (c.a, c.x, c.y, c.pc, c.p(), c.sp); g.call(L['CACULATE_AND_REDRAW']); g.call(L['DRAW_MAP_WINDOW'])
     c.a, c.x, c.y, c.pc, c.sp = sv[0], sv[1], sv[2], sv[3], sv[5]; c.setp(sv[4])
     fails += check('player moved to (%d,%d)' % (x, y)) > 0

@@ -40,7 +40,7 @@ best = max(((int((mp[y - 4:y + 5, x - 5:x + 6] == 204).sum()), x, y) for y in ra
 print('water-rich window: %d of 99 tiles are water, around map (%d,%d)' % best)
 g.keys.append(13); settle(4)
 def jump(x, y):
-    m[0x9540] = x; m[0x9580] = y
+    g.quiesce(); m[0x9540] = x; m[0x9580] = y
     sv = (c.a, c.x, c.y, c.pc, c.p(), c.sp); g.call(L['CACULATE_AND_REDRAW']); g.call(L['DRAW_MAP_WINDOW'])
     c.a, c.x, c.y, c.pc, c.sp = sv[0], sv[1], sv[2], sv[3], sv[5]; c.setp(sv[4])
 jump(best[1], best[2])

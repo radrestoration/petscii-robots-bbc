@@ -25,9 +25,9 @@ OSCLI     = $FFF7
 EVNTV     = $0220
 
 ; --- LOW RAM layout (&0E00-&2FFF) ---
-GAMEVARS  = $1600       ; the C64 version's $0600-$07FF variable page lives here
+; $1600-$17FF: the C64 version's $0600-$07FF variable page (UNIT_TIMER_A..KEY_*, in robots.s)
 VCOL      = $1800       ; virtual colour RAM  (1280 bytes)   C64: $D800
-HALVARS   = $1200       ; HAL work area (1 KB; LOW code is below it, region size checked by bbc.cfg)
+; $1200-$15FF: HAL work area (segment HALVARS, bbc.cfg; LOW code is below it, region sizes checked by the linker)
 VSCR      = $2000       ; virtual screen RAM  (1280 bytes)   C64: $E000   (VCOL = VSCR - $0800 as on the C64)
 SH_CH     = $2500       ; what is currently drawn: characters
 SH_CO     = $2A00       ; what is currently drawn: colours
@@ -48,10 +48,9 @@ ZP0       = $70
 ZP1       = $71
 ZP2       = $72
 ZP3       = $73
-; HAL zero page ($40-$5F)
+; HAL zero page ($41-$7D)
 P_CH      = $41
 P_CO      = $43
-P_SC      = $45
 P_SO      = $47
 P_D0      = $49
 P_D8      = $4B
@@ -65,7 +64,6 @@ G_M       = $59
 G_V       = $5A
 S_X       = $5B
 S_Y       = $6C         ; (S_X is 16 bit: $5B-$5C)
-S_MC      = $5D
 S_B       = $5E
 S_OFF     = $5F
 S_T1      = $61
@@ -92,16 +90,16 @@ T_TILE    = $79
 P_S       = $7A         ; (16 bit) source pointer in the tile cache
 BL_BANK   = $7C
 T_K       = $7D
-T_J       = $7E
-MUS_R2    = CACHEB5 + (TILE_SLOTS - 226) * TILEBYTES   ; ... and above it (the bank-5 slots of the tile cache come first)
-MUS_R2_END = $C000      ; music: song images load here (music.s); the bank's cache slots are 16 with the tile dedup
+SND_PTR   = $6D         ; (16 bit) sound effect data pointer; sound code runs in the vsync event, so it has its own zero page
+SND_T     = $6F
+
+; --- tile cache, music and other work areas ---
 CACHEB5   = $A800       ; tile cache: slots 0-112 bank 6, 113-225 bank 7 (both at &8000), 226+ bank 5 from here
+MUS_R2    = CACHEB5 + (TILE_SLOTS - 226) * TILEBYTES   ; music: song images load here (music.s), above the bank-5 slots of the tile cache
 TSLOT     = $9400       ; tile id -> cache slot (tiles with identical images share one; tools/make_data.py), in the data bank
 .include "tile_meta.inc"
 TILEBYTES = 144         ; 3 strips of 3 cells x 16 bytes
 MAPROW    = $1E00       ; 16 cells x 8 bytes: one cell row of the overview map being built (128 bytes)
 MAP_COL0  = 12          ; overview map block: 16 x 8 cells at column 12, row 2 of the 25-row map screen
 MAP_ROW0  = 2
-SND_PTR   = $6D       ; (16 bit) sound effect data pointer; sound code runs in the vsync event, so it has its own zero page
-SND_T     = $6F
 SPRTILE   = $1D80       ; WIN_W*WIN_H flags: a hardware sprite is over this window tile (built by SPR_UPDATE)

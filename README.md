@@ -26,7 +26,7 @@ Needs cc65 (`ca65`, `ld65`), python3 with numpy and Pillow, and git (to fetch th
                         # assets, assembles and writes build/robots.ssd
     ./run-bbc.sh        # b-em, Master 128, autoboot
 Tool locations (cc65, b-em) can be set in `tools.cfg` (copy `tools.cfg.tmpl`); by default they are taken from your PATH.
-`make test` runs the simulator tests (about 3 minutes).
+`make test` runs the simulator tests (about 8 minutes).
 On a real Master: put `robots.ssd` on a disc, hold Shift and tap Break. It needs sideways RAM banks 4 and 5 (both are
 RAM on a stock Master 128).
 
@@ -50,9 +50,9 @@ logical keyboard modes (host F1 is the BBC's f0 in one, f1 in the other), so eac
 
 ## Layout
     source/            robots.s (the game), background_tasks.s (game logic), bbc.cfg (linker), loader.cfg
-    source/platform/bbc/   defs.s (memory map), hal_low.s, hal_gfx.s, hal_main.s (renderer, sprites, keyboard, vsync), loader.s
+    source/platform/bbc/   defs.s (memory map), hal_low.s (screen critical sections), hal_gfx.s (renderer, software sprites), hal_main.s (refresh, tile cache, keyboard, sound, vsync), music.s, loader.s
     tools/             asset conversion, disc builder, simulator and tests
     upstream/          third-party sources fetched by tools/fetch_upstream.sh (not in this repo)
-    docs/              screenshot from b-em
+    docs/              b-em screenshot and the Mode 2 / dithering preview images (see PORTING.md)
     build/             generated
 `make help` lists the targets; `make test` runs the headless simulator tests.

@@ -139,6 +139,18 @@ class Game(BBC):
             if c.cycles >= self.next_irq and not c.i:      # SEI'd critical sections defer it, as on the real machine
                 self.next_irq += 40000
                 if c.m[0x0220] | (c.m[0x0221] << 8) == self.L['EVT']: self.vsync()   # only once the game has hooked it
+        # never hand control back inside a critical section (interrupts off): with ACCCON.X = 1 the shadow screen is mapped over the
+        # game code at &3000-&7FFF, so a test that then pokes memory or calls game routines would execute screen data
+        limit = c.cycles + 200_000
+        while c.i and c.cycles < limit: c.step()
+    def quiesce(self, limit=3_000_000):
+        """run on until the game is at the top of its main loop, where no game routine is part-way through.  A test that calls
+        game routines or changes game variables from outside (DRAW_MAP_WINDOW, CACULATE_AND_REDRAW...) must do it here: those
+        routines are not re-entrant (zero-page pointers, self-modified code), so calling one while the game is inside it
+        derails the game when it resumes."""
+        c = self.cpu; end = c.cycles + limit
+        while c.pc != self.L['MAIN_GAME_LOOP'] and c.cycles < end:
+            self.run(1)
     def vsync(self):
         self.frame += 1
         c = self.cpu; sv = (c.a, c.x, c.y, c.pc, c.p(), c.sp)

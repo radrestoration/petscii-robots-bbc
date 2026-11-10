@@ -62,7 +62,6 @@ MT_Q:      .res 2
 MT_P:      .res 2
 MT_D:      .res 1
 MT_F5:     .res 1
-MT_R:      .res 1
 MT_N:      .res 2
 .segment "GFX"
 
@@ -466,14 +465,14 @@ MUSIC_END:
 MUS_PLAY:       .byte 0         ; non-zero: a song is playing
 MUS_LOADED:     .byte $FF       ; song whose image is in bank 5
 MUS_SONG:       .byte 0
-MUS_ERR:        .byte 0         ; non-zero: the last song image could not be loaded (the game prints a message; see HAL_MUSIC_CHECK)
+MUS_ERR:        .byte 0         ; non-zero: the last song image could not be loaded (the game prints a message; see MUS_CHECK_GET)
 MUS_TRIES:      .byte 0
 
 ; The first order list of every song image starts right after the pointer tables, so MORDLO/MORDHI [0] are the same for all songs;
 ; a load that did not happen leaves the byte HAL_MUSIC_START cleared before it.
 MUS_OL = MUS_R2 + 6 + 2 * MUS_NP
 
-; page bank 5 and set the high byte of the first order-list pointer to A (the check byte), or read it into A (MUS_CHECK_GET)
+; page bank 5 and clear the high byte of the first order-list pointer (the check byte, MUS_CHECK_CLEAR), or read the pointer into X/A (MUS_CHECK_GET)
 MUS_CHECK_CLEAR:
         php
         sei
@@ -502,7 +501,7 @@ MUS_CHECK_END:
 
 ; HAL_MUSIC_START: A = the C64 version's song number (0-7; 5 = silence).  Loads the song image if another one is resident.
 ; The image is checked after the load (the first order-list pointer is what the file says) and the load retried up to three times:
-; MUS_ERR is set if it never arrives (HAL_MUSIC_CHECK), and then no music is played.
+; MUS_ERR is set if it never arrives (MUS_CHECK_GET), and then no music is played.
 HAL_MUSIC_START:
         sta MUS_SONG
         php

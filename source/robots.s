@@ -80,12 +80,9 @@ MAP_Y =$27	;Current Y location on map
 MAP_WINDOW_X =$28	;Top left location of what is displayed in map window
 MAP_WINDOW_Y =$29	;Top left location of what is displayed in map window
 DECNUM =$2A	;a decimal number to be displayed onscreen as 3 digits.
-ATTRIB =$2B	;Tile attribute value
 UNIT =$2C	;Current unit being processed
 TEMP_A =$2D	;used within some routines
 TEMP_B =$2E	;used within some routines
-TEMP_C =$2F	;used within some routines
-TEMP_D =$30	;used within some routines
 CURSOR_X =$31	;For on-screen cursor
 CURSOR_Y =$32	;For on-screen cursor
 CURSOR_ON =$33	;Is cursor active or not? 0=NO.  $90=COMPASS $B9=SEARCH $BA=HAND
@@ -93,10 +90,7 @@ REDRAW_WINDOW =$34	;1=yes 0=no
 MOVE_RESULT =$35	;1=Move request success, 0=fail.
 UNIT_FIND =$36	;255=no unit present.
 MOVE_TYPE =$37	;%00000001=WALK %00000010=HOVER
-SCREEN_SHAKE =$38	;0=NO 1=YES
 PRECALC_COUNT =$39	;part of screen draw routine
-GOAT_ZERO1 =$3E	;used by goat-tracker
-GOAT_ZERO2 =$3F	;used by goat-tracker
 
 ; BBC: the C64 start-up (BASIC stub, VIC/CIA/KERNAL set-up, loading tiles/font/sprites/music from disc)
 ; is replaced by the HAL.  The loader has already put the code in place and the tile tables in
@@ -107,13 +101,10 @@ START:	SEI
 	JSR	HAL_INIT
 	JSR	HAL_OS_SETUP
 	LDA	#0
-	STA	SCREEN_SHAKE
 	STA	MUSIC_STATE
 	JSR	SET_CONTROLS	;copy initial key controls
 	JMP	INTRO_SCREEN
 INIT_GAME:
-	LDA	#0
-	STA	SCREEN_SHAKE
 	JSR	SETUP_SPRITE
 	JSR	RESET_KEYS_AMMO
 	JSR	DISPLAY_GAME_SCREEN
@@ -203,10 +194,7 @@ MSG_MUSICON:		.byte 13,21,19,9,3,32,15,14,46,0
 MSG_MUSICOFF:		.byte 13,21,19,9,3,32,15,6,6,46,0
 MSG_MUSICERR:		.byte 13,21,19,9,3,32,12,15,1,4,32,6,1,9,12,5,4,46,0
 	
-SETUP_INTERRUPT:	;BBC: HAL_OS_SETUP hooks the vsync event
-	RTS
-
-;This is the routine that runs every 60 seconds from the IRQ.
+;This is the routine that runs every frame (50 Hz) from the vsync event.
 ;BGTIMER1 is always set to 1 every cycle, after which the main
 ;program will reset it to 0 when it is done with it's work for
 ;that cycle.  BGTIMER2 is a count-down to zero and then stays
@@ -225,44 +213,8 @@ IRQ0:	JSR	UPDATE_GAME_CLOCK
 	DEC	BGTIMER2
 IRQ1:	LDA	KEYTIMER
 	CMP	#0
-	BEQ	IRQ2
+	BEQ	IRQ20
 	DEC	KEYTIMER
-IRQ2:	;BORDER FLASHER
-	LDX	BORDER
-	CPX	#0
-	BEQ	IRQ3
-	LDA	BORDER,X
-	STA	VIC+$20
-	DEC	BORDER
-	;BACKGROUND FLASHER
-IRQ3:	LDX	BGFLASH
-	CPX	#0
-	BEQ	IRQ10
-	LDA	BGFLASH,X
-	STA	VIC+$21
-	DEC	BGFLASH
-IRQ10:	;SCREEN_SHAKER
-	LDA	SCREEN_SHAKE
-	CMP	#$00
-	BEQ	SHAKE4
-SHAKE2:	INC	SSCOUNT
-	LDA	SSCOUNT
-	CMP	#5
-	BNE	SHAKE3
-	LDA	#0
-	STA	SSCOUNT
-SHAKE3:	LDY	SSCOUNT
-	LDA	VIC+$16
-	AND	#%11111000
-	ORA	SSHAKE,Y
-	STA	VIC+$16
-	JMP	IRQ20
-SHAKE4:	LDA	#%11001000
-	STA	VIC+$16
-	;CHECK TO SEE IF KEYBOARD WAS DISABLED	
-	;This routine causes the kernal to skip keyboard
-	;input for one cycle to help "debounce" the 
-	;keyboard.
 IRQ20:	LDA	KBDENABLE	;1=normal 0=disabled
 	CMP	#0
 	BNE	IRQ30
@@ -285,7 +237,6 @@ IRQ30:	;Animate Sprite Color
 	LDY	SPRITECOLSTATE
 	LDA	SPRITECOLCHART,Y
 	STA	VIC+$27	;SPRITE 0 COLOR REGISTER
-	;STA	$D028	;SPRITE 1 COLOR REGISTER
 	INY
 	CPY	#8
 	BNE	IRQ31
@@ -296,13 +247,9 @@ BGTIMER1:	.byte 00
 BGTIMER2:	.byte 00
 KEYTIMER:	.byte 00
 KEYSOFF:		.byte 00
-BORDER:		.byte 00,06,02,08,08,07,07,07,08,08,02
-BGFLASH:		.byte 00,00,06,14,14,01,01,01,14,14,06
 SPRITECOLCHART:	.byte 00,11,12,15,1,15,12,11
 SPRITECOLSTATE:	.byte 00
 SPRITECOLTIMER:	.byte 8
-SSHAKE:		.byte 00,02,04,02,00
-SSCOUNT:		.byte 00
 
 ;Since the PET OR VIC-20 has no real-time clock, and the Jiffy clock
 ;is a pain to read from assembly language, I have created my own.
@@ -733,8 +680,6 @@ BOMB_MAGNET_COMMON2:
 	RTS	
 
 USE_EMP:
-	LDA	#10
-	STA	BGFLASH	
 	LDA	#3		;EMP sound
 	JSR	PLAY_SOUND	;SOUND PLAY	
 	DEC	INV_EMP
@@ -1366,8 +1311,6 @@ USER_SELECT_OBJECT:
 	STA	CURSOR_X
 	LDA	#WIN_H/2
 	STA	CURSOR_Y
-	;LDA	#$90
-	;STA	CURSOR_ON
 	JSR	DISPLAY_CURSOR
 	;First ask user which object to move
 MV01:	JSR	BACKGROUND_TASKS
@@ -1378,8 +1321,6 @@ MV01:	JSR	BACKGROUND_TASKS
 	STA	CURSOR_ON
 	RTS
 MVCONT:	JSR	HAL_GETKEY
-	;CMP	#$00
-	;BEQ	MV01
 MV02:	CMP	#$1D	;CURSOR RIGHT
 	BNE	MV03
 MV00R:	INC	CURSOR_X
@@ -1972,7 +1913,6 @@ DISPLAY_CURSOR:
 	STA	VIC+$15	;DISABLE SPRITE 0
 	RTS
 CRSR1:	;CURSOR IS ON
-	;LDA 	#$90	;USE SPRITE DEF #1
 	STA	VSPTR+0
 	LDA	VIC+$15
 	ORA	#%00000001	
@@ -1990,8 +1930,6 @@ CRSR1:	;CURSOR IS ON
 
 SPRITE_CHART_XL:
 	.byte 24,48,72,96,120,144,168,192,216,240,10
-SPRITE_CHART_XH:
-	.byte 0,0,0,0,0,0,0,0,0,0,1
 
 SPRITE_CHART_Y:
 	.byte 50,74,98,122,146,170,194,218,242
@@ -2051,12 +1989,6 @@ DECB:		.byte 1
 SCREENPOS:	.byte $00
 DECTEMP:		.byte $00
 
-; The following routine loads the tileset from disk
-; BBC: the tile tables are in sideways bank DATABANK (put there by the loader); nothing to do.
-TILE_LOAD_ROUTINE:
-DISPLAY_LOAD_MESSAGE1:
-	RTS
-
 ; The map ("level file": $300 bytes of units + the 8 KB map) goes into DATABANK at UNIT_TYPE.
 ; *SRLOAD takes the load address and bank number; with no Q option it buffers in HAZEL.
 MAP_LOAD_ROUTINE:
@@ -2086,14 +2018,8 @@ DLM3:	LDA	(ZP0),Y
 	RTS
 LOAD_MSG2:	.byte 12,15,1,4,9,14,7,32,13,1,16,58
 
-; BBC: font and sprite images are in the GFXBANK image; the music player and its songs: platform/bbc/music.s.
-LOAD_CHARSET:
-LOAD_SPRITES:
-LOAD_MUSIC:
-HAL_NOP:
-	RTS
-
-GREEN_SCREEN:
+; BBC: the tile tables, font and sprite images are loaded by the loader; the music player and its songs: platform/bbc/music.s.
+;Sets the whole colour RAM to the colour in CS02+1 (patched by callers).
 CS02:	LDA	#5	;GREEN	
 	LDX	#$00
 CS03:	STA	VCOL+$000,X
@@ -2828,9 +2754,6 @@ GOM0:	JSR	BACKGROUND_TASKS
 	LDA	KEYTIMER
 	CMP	#0
 	BNE	GOM0
-	;stop screen shake
-	LDA	#0
-	STA	SCREEN_SHAKE
 	;turn off character sprite
 	LDA	VIC+$15
 	AND	#%00011111
@@ -2860,8 +2783,6 @@ GOM3:	JSR	ANIMATE_GAMEOVER
 	BEQ	GOM3
 GOM4:	LDA	#0
 	STA	KBDCOUNT	;CLEAR KEYBOARD BUFFER
-	;LDA	#15		;menu beep
-	;JSR	PLAY_SOUND	;SOUND PLAY
 	JSR	DISPLAY_ENDGAME_SCREEN
 	JSR	PLAY_GAME_OVER_MUSIC
 	JSR	DISPLAY_WIN_LOSE
@@ -2872,8 +2793,6 @@ GOM4:	LDA	#0
 GOM5:	JSR	HAL_GETKEY
 	CMP	#$00
 	BEQ	GOM5
-	;LDA	#0
-	;STA	$00C6	;CLEAR KEYBOARD BUFFER	
 GOM6:	JMP	INTRO_SCREEN
 
 ANIMATE_GAMEOVER:
@@ -2962,8 +2881,6 @@ PRINTX:	.byte 00	;used to store X-cursor location
 ;a new row at the bottom.
 SCROLL_INFO:
 	SEI
-	LDA	#%00110100	
-	;--------------
 	LDX	#0
 SCI1:	LDA	VSCR+$488,X
 	STA	VSCR+$460,X
@@ -2981,14 +2898,10 @@ SCI2:	STA	VSCR+$4D8,X;BOTTOM ROW
 	INX
 	CPX	#33
 	BNE	SCI2
-	;--------------
-	LDA	#%00110110	
 	CLI
 	RTS		
 
 INTRO_SCREEN:
-	LDA	#15
-	STA	SIDVOL	;	volume
 	LDA	#4		;pick song
 	JSR	HAL_MUSIC_START	;START MUSIC
 	LDA	#1
@@ -3096,8 +3009,6 @@ EXEC_COMMAND:
 	JSR	HAL_MUSIC_START	;START MUSIC
 	LDA	#0
 	STA	MUSIC_STATE
-	LDA	#0
-	STA	SIDVOL	;	volume
 	JSR	PAUSE_UNTIL_NEXT_CYCLE
 	JMP	INIT_GAME
 EXEC1:	CMP	#2	;DIFF LEVEL
@@ -3858,57 +3769,10 @@ TGMUS1:	LDA	#<MSG_MUSICON
 USER_MUSIC_ON:	.byte 1
 LEVEL_MUSIC:	.byte 1,0,2,3,0,1,2,3,0,1,2,3,0,1
 
-PLAY_SOUND:	;BBC: SN76489 effects (hal_main.s); the C64 SID data below is compiled out
+PLAY_SOUND:	;BBC: SN76489 effects (hal_main.s)
 	JMP	HAL_PLAY_SOUND
 
-.if 0
-SOUND_FX_L:	
-	.byte <SOUND_EXPLOSION		; sound 00 explosion
-	.byte <SOUND_EXPLOSION		; sound 01 explosion
-	.byte <SOUND_MEDKIT		; sound 02 medkit
-	.byte <SOUND_EMP		; sound 03 emp
-	.byte <SOUND_MAGNET		; sound 04 magnet
-	.byte <SOUND_SHOCK		; sound 05 electric shock
-	.byte <SOUND_MOVEOBJ		; sound 06 move object
-	.byte <SOUND_SHOCK		; sound 07 electric shock
-	.byte <SOUND_PLASMA		; sound 08 plasma gun
-	.byte <SOUND_PISTOL		; sound 09 fire pistol
-	.byte <SOUND_ITEM_FOUND		; sound 10 item found
-	.byte <SOUND_ERROR		; sound 11 error
-	.byte <SOUND_CYCLE_WEAPON	; sound 12 change weapons
-	.byte <SOUND_CYCLE_ITEM		; sound 13 change items
-	.byte <SOUND_DOOR		; sound 14 door
-	.byte <SOUND_MENU_BEEP		; sound 15 menu beep
-	.byte <SOUND_MENU_BEEP		; sound 16 walk
-	.byte <SOUND_BEEP		; sound 17 short beep
-	.byte <SOUND_BEEP		; sound 18 short beep
-
-SOUND_FX_H:	
-	.byte >SOUND_EXPLOSION		; sound 00 explosion
-	.byte >SOUND_EXPLOSION		; sound 01 explosion
-	.byte >SOUND_MEDKIT		; sound 02 medkit
-	.byte >SOUND_EMP		; sound 03 emp
-	.byte >SOUND_MAGNET		; sound 04 magnet
-	.byte >SOUND_SHOCK		; sound 05 electric shock
-	.byte >SOUND_MOVEOBJ		; sound 06 move object
-	.byte >SOUND_SHOCK		; sound 07 electric shock
-	.byte >SOUND_PLASMA		; sound 08 plasma gun
-	.byte >SOUND_PISTOL		; sound 09 fire pistol
-	.byte >SOUND_ITEM_FOUND		; sound 10 item found
-	.byte >SOUND_ERROR		; sound 11 error
-	.byte >SOUND_CYCLE_WEAPON	; sound 12 change weapons
-	.byte >SOUND_CYCLE_ITEM		; sound 13 change items
-	.byte >SOUND_DOOR		; sound 14 door
-	.byte >SOUND_MENU_BEEP		; sound 15 menu beep
-	.byte >SOUND_MENU_BEEP		; sound 16 walk
-	.byte >SOUND_BEEP		; sound 17 short beep
-	.byte >SOUND_BEEP		; sound 18 short beep
-
-.endif
-
 DISPLAY_MAP:
-	LDA	#0
-	STA	SCREEN_SHAKE
 	LDA	#%00000000	;disable ALL sprites
 	STA	VIC+$15
 	LDA	#01	;WHITE
@@ -4305,75 +4169,6 @@ CINEMA_MESSAGE:
 
 .segment "CODE"
 
-.if 0
-SOUND_MENU_BEEP:
-	.byte $05,$58,$08,$B5,$41,$BA,$40,$00
-SOUND_DOOR:
-	.byte $05,$59,$00,$B4,$81,$B5,$80,$B6,$B7,$B8,$B9,$BA,$BB,$BC,$BD,$BE
-   	.byte $C2,$C4,$C6,$C8,$CA,$CC,$CD,$00
-SOUND_CYCLE_ITEM:	
-	.byte $05,$58,$08,$B0,$41,$B7,$40,$BC,$00
-SOUND_ERROR:
-	.byte $05,$58,$09,$90,$41,$B0,$40,$B2,$90,$B0,$B2,$90,$B0,$B2,$90,$B0
-	.byte $B2,$90,$B0,$B2,$00
-SOUND_CYCLE_WEAPON:
-	.byte $05,$58,$00,$B0,$21,$B7,$20,$BC,$00
-SOUND_ITEM_FOUND:
-	.byte $0A,$00,$02,$A0,$41,$A0,$A0,$A4,$A4,$A4,$A7,$A7,$A7,$A0,$A0,$A0
-	.byte $A4,$A4,$A4,$A7,$A7,$A7,$A0,$A0,$A0,$A4,$A4,$A4,$A7,$A7,$A7,$A0
-	.byte $A0,$A0,$A4,$A4,$A4,$A7,$A7,$A7,$00
-SOUND_BEEP:	
-        .byte $05,$55,$08,$C0,$41,$C0,$40,$00
-SOUND_PISTOL:
-	;!BYTE	$85,$55,$00,$D0,$81,$B7,$80,$BC
-	.byte $00,$F9,$08,$C4,$81,$A8,$41,$C0,$81,$BE,$BC,$80,$BA,$B8,$B6,$B4
-        .byte $B2,$B0,$AE,$AC,$AA,$A8,$A6,$A4,$A2,$A0,$9E,$9C,$9A,$98,$96,$94
-        .byte $92,$90,$00
-SOUND_PLASMA:
-        .byte $05,$5A,$08,$AA,$41,$AA,$80,$AD,$40,$AF,$B1,$B3,$B6,$B7,$B9,$AA
-        .byte $41,$AA,$80,$AD,$40,$AF,$B1,$B3,$B6,$B7,$B9,$AA,$41,$AA,$80,$AD
-        .byte $40,$AF,$B1,$B3,$B6,$B7,$B9,$AA,$41,$AA,$80,$AD,$40,$AF,$B1,$B3
-        .byte $B6,$B7,$B9,$AA,$41,$AA,$80,$AD,$40,$AF,$B1,$B3,$B6,$B7,$B9,$AA
-        .byte $41,$AA,$80,$AD,$40,$AF,$B1,$B3,$B6,$B7,$B9,$AA,$41,$AA,$80,$AD
-        .byte $40,$AF,$B1,$B3,$B6,$B7,$B9,$AA,$41,$AA,$80,$AD,$40,$AF,$B1,$B3
-        .byte $B6,$B7,$B9,$AA,$41,$AA,$80,$AD,$40,$AF,$B1,$B3,$B6,$B7,$B9,$AA
-        .byte $41,$AA,$80,$AD,$40,$AF,$B1,$B3,$B6,$B7,$B9,$AA,$41,$AA,$80,$AD
-        .byte $40,$AF,$B1,$B3,$B6,$B7,$B9,$AA,$41,$AA,$80,$AD,$40,$AF,$B1,$B3
-        .byte $B6,$B7,$B9,$00
-SOUND_SHOCK:
-	.byte $05,$59,$08,$A5,$40,$C5,$80,$A5,$90,$40,$90,$80,$A4,$A0,$40,$B0
-   	.byte $A0,$80,$B5,$40,$BA,$99,$80,$90,$C0,$98,$9B,$40,$8B,$9B,$00
-SOUND_MOVEOBJ:
-	.byte $05,$58,$00,$D0,$81,$C0,$80,$B8,$00
-SOUND_MAGNET:
-	.byte $05,$5B,$08,$B1,$41,$B4,$40,$A3,$BA,$C7,$A6,$B4,$93,$92,$B1,$A8
-	.byte $C6,$A4,$9C,$BA,$BB,$BC,$C3,$A2,$B9,$B7,$95,$94,$B1,$B4,$A3,$BA
-	.byte $C7,$A6,$B4,$93,$92,$B1,$A8,$C6,$A4,$95,$94,$B1,$B4,$A3,$BA,$C7
-	.byte $94,$B4,$A3,$BA,$C7,$A6,$B4,$93,$92,$B1,$A8,$C6,$A4,$9C,$BA,$BB
- 	.byte $94,$B4,$A3,$CA,$C7,$A6,$B4,$93,$92,$00
-SOUND_EMP:
-       	.byte $05,$5B,$08,$95,$41,$97,$80,$99,$9B,$9D,$40,$9F,$91,$93,$80,$95
-     	.byte $97,$99,$40,$9B,$9D,$9F,$80,$A1,$A2,$A3,$40,$A4,$A5,$A6,$80,$A7
-      	.byte $A8,$A9,$40,$AA,$AB,$AC,$80,$AD,$AE,$AF,$40,$B0,$B1,$B2,$80,$B3
-     	.byte $B4,$B5,$40,$B6,$B7,$B8,$80,$B9,$BA,$BB,$40,$BC,$BE,$BF,$80,$C0
-     	.byte $C1,$C2,$40,$C3,$C4,$C5,$C6,$C7,$C8,$C9,$CA,$CB,$80,$CC,$CD,$CE
-        .byte $40,$CF,$D0,$D1,$D2,$D3,$D4,$D5,$D6,$D7,$80,$D8,$D9,$DA,$40,$DB
-        .byte $DC,$DD,$80,$DE,$DF,$00
-SOUND_MEDKIT:	
-        .byte $05,$59,$08,$C0,$41,$C4,$40,$C7,$CC,$C4,$C7,$CC,$C4,$C7,$CC,$C4
-        .byte $C7,$CC,$C4,$C7,$CC,$C4,$C7,$CC,$C4,$C7,$CC,$C4,$C7,$CC,$C4,$C7
-        .byte $CC,$C4,$C7,$CC,$C4,$C7,$CC,$00
-SOUND_EXPLOSION:
-	.byte $05,$5C,$00,$94,$81,$95,$80,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E
-        .byte $92,$80,$94,$8F,$8E,$8D,$8C,$8B,$8A,$89,$88,$87,$86,$84,$00
-
-
-
-
-
-
-
-.endif
 
 ; ---------------------------------------------------------------------------------------------
 ; BBC platform layer

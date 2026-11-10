@@ -1,6 +1,6 @@
 ; SPDX-License-Identifier: GPL-3.0-only
 ; PETSCII Robots - BBC Master boot loader (the disc's !BOOT, boot option 2).  Checks for a Master,
-; loads the four images and jumps to the game.  Assembled on its own at &1400, which is free
+; loads the five images and jumps to the game.  Assembled on its own at &1400, which is free
 ; while the game images load (LOW is below &1400, game variables start at &1600).
 OSBYTE  = $FFF4
 OSCLI   = $FFF7

@@ -44,7 +44,7 @@ for k in (137, 137, 137, 138, 138, 136, 139, 139, 139, 137, 137):
 check('after 11 moves')
 # window near the map edges (the 9-tile window may start above the map or end below it): must still draw, and agree
 for x, y in ((22, 3), (22, 61), (6, 30), (122, 30)):
-    m[0x9540] = x; m[0x9580] = y
+    g.quiesce(); m[0x9540] = x; m[0x9580] = y
     sv = (c.a, c.x, c.y, c.pc, c.p(), c.sp)
     g.call(L['CACULATE_AND_REDRAW']); g.call(L['DRAW_MAP_WINDOW'])
     c.a, c.x, c.y, c.pc, c.sp = sv[0], sv[1], sv[2], sv[3], sv[5]; c.setp(sv[4]); check('window at map (%d,%d)' % (x, y))

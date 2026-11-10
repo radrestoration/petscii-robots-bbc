@@ -69,6 +69,8 @@ test: all build/loader.bin
 	$(PYTHON) tools/anim_test.py
 	$(PYTHON) tools/loader_test.py
 	$(PYTHON) tools/map_test.py
+	$(PYTHON) tools/window_test.py
+	$(PYTHON) tools/arrow_test.py
 	$(PYTHON) tools/sound_test.py
 	$(PYTHON) tools/music_conv_test.py 1500
 	$(PYTHON) tools/music_test.py 1500

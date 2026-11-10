@@ -52,8 +52,8 @@ panel and health sit in rows 27-30, row 31 is blank. The C64's 25-row full scree
 CRTC start address moved (`HAL_VIEW_CENTRE`) so they sit centred; `HAL_VIEW_FULL` for the game screen.
 | Area | Contents |
 |---|---|
-| &0E00-&11FF LOW (region size checked) | critical-section stubs, shared tables (CMAP/CMASK, ROWTAB/COLTAB, BITS...), ~850 bytes |
-| &1200-&15FF | HAL variables (sprite records, tile tables, `TBUF`...), ~940 bytes; the loader (&1400) runs here before it is used |
+| &0E00-&11FF LOW (region size checked) | critical-section stubs, shared tables (CMAP/CMASK, ROWTAB/COLTAB, BITS...), ~940 bytes |
+| &1200-&15FF | HAL variables (sprite records, tile tables, `TBUF`...), ~1020 bytes; the loader (&1400) runs here before it is used |
 | &1600-&17FF | the C64's $0600-$07FF variable page |
 | &1800-&1CFF / &2000-&24FF | VCOL / VSCR (virtual colour / screen RAM, 1280 bytes each; VCOL = VSCR - &800 as on the C64) |
 | &1D00 | `MAP_PRECALC` (99 bytes, moved out of the variable page) |
@@ -96,8 +96,8 @@ hardware, on a Master Compact, or past the first level.
 4. **Colour** - the palette is a first pass (black/red/blue/white; some tiles come out in odd colours, e.g. green foliage red).
    Per-level palettes via `VDU 19` at level load are cheap (tools already count colour use); a palette split by cell-row band
    (window vs side panel/text) would give two different colour sets on screen. Needs a per-level choice in `tools/make_data.py`.
-5. **Border/background flashes and screen shake** (left for later by decision) - `VIC+$20/$21/$16` are written but inert. Flashes: briefly change logical
-   colour 0 (or the whole palette); shake: move the CRTC start address / horizontal position (R2) for a few frames.
+5. **Border/background flashes and screen shake** - not implemented; the C64 code that wrote the (inert) `VIC+$20/$21/$16` was removed in the 2026-11-10 clean-up.
+   Possible later: flashes by briefly changing logical colour 0 (or the whole palette); shake by moving the CRTC start address / horizontal position (R2) for a few frames.
 6. **Joystick** - dropped by decision (the C64's SNES-pad code and its menu entry are removed, 2026-10-31: the CONTROLS option now cycles keyboard / custom keys).
 7. **Speed** - three rounds done (6c): a movement step is ~225K cycles of work in the simulator (about 110 ms, was ~210 ms
    at the start). Where it goes now: tile copy (~55 tiles) ~92 K (41%), sprite cells ~32 K, the game's window plot ~25 K,
@@ -154,7 +154,7 @@ down-sampling, 8 colours, readable text. Memory limit: cols x rows x 32 <= 20480
 | L1 | 20 x 32 cells (standard Mode 2) | 6 x 9 tiles (54) + 5 text rows + 2-column strip | no CRTC changes |
 | L2 | 22 x 29 (CRTC R1=88) | 7 x 8 tiles (56) | needs a widened display; not tried on hardware |
 | L3 | 25 x 25 (CRTC R1=100, overscan; the VIC-20 version's own 25x25) | 8 x 7 tiles (56) | overscan may clip on real monitors; not tried |
-For comparison: Mode 1 now 11 x 7 = 77 tiles, VIC-20 original 7 x 7 = 49, C64 11 x 7. Mode 2 cells are 2.1:1 (wide) on a 4:3
+For comparison: Mode 1 then 11 x 7 = 77 tiles (now 11 x 9 = 99), VIC-20 original 7 x 7 = 49, C64 11 x 7. Mode 2 cells are 2.1:1 (wide) on a 4:3
 monitor, against about 1.1:1 for Mode 1 and ~1.3:1 on the VIC-20, so the art looks stretched wider than on any other version. Cell
 cost doubles (32 bytes), tile cache images are 288 bytes (3 banks hold ~170 of them), but fewer cells are drawn per step.
 CRTC widening/overscan claims are from general BBC knowledge, not checked against a source or hardware.

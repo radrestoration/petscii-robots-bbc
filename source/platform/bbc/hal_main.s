@@ -35,7 +35,6 @@ KBDENABLE:      .res 1          ; $0289: 0 = keyboard input off
 KBDCOUNT:       .res 1          ; $C6:  number of keys queued
 KEYQ:           .res 1          ; queued key (one slot)
 KREPEAT:        .res 1          ; $028C
-SIDVOL:         .res 1          ; $D418 stand-in
 TICKS:          .res 1
 SND_ID:         .res 1          ; effect playing ($FF none)
 SND_PRIO_CUR:   .res 1
@@ -512,8 +511,6 @@ INVAL:  lda S_X                 ; sx = X-24 (clamped at 0), column range sx>>3 .
         sbc S_T1
         sta S_T2                ; rows - 1
         ; P_CO = VCOL + row0*40 + col0, P_SO = SH_CO + same
-        lda #0
-        sta G_M
         lda S_T1                ; row0*40 = row0*32 + row0*8
         asl a
         asl a
@@ -1199,7 +1196,7 @@ HAL_CLEAR_TAIL:
         rts
 
 ; ---- window tile fast path --------------------------------------------------------------------
-; DRAW_MAP_WINDOW records the cache slot of the plain tile it plotted at each of the 11x7 window positions in TILE_NEW
+; DRAW_MAP_WINDOW records the cache slot of the plain tile it plotted at each of the 11x9 window positions in TILE_NEW
 ; ($FF where an overlay was plotted on top or the tile is never cached).  A position whose slot changed
 ; is drawn by copying a cached 24x24 image (144 bytes) instead of drawing 9 cells; SH_* is brought up
 ; to date so the cell scan finds nothing to do there.  Positions with a sprite over them, overlays and
@@ -1518,7 +1515,7 @@ KEYSET:                         ; OS code, internal key number, PETSCII
         .byte 200,$76,136       ; f8  map
         .byte 9,$60,223         ; tab = C= + * (cheat)
         .byte 127,$59,20        ; delete
-KEYSET_N = 16
+KEYSET_N = 17
 ; digits '0'..'9'
 KEYNUM_DIGIT: .byte $27,$30,$31,$11,$12,$13,$34,$24,$15,$26
 ; letters 'A'..'Z'
